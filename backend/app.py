@@ -97,9 +97,13 @@ socketio = SocketIO(
 
 @app.before_request
 def _before():
-    from flask import g
-    import time
-    g._start_time = time.time()
+    try:
+        from flask import g
+        import time
+        g._start_time = time.time()
+    except RuntimeError:
+        # Ignore if called outside request context (during eventlet monkey patching)
+        pass
 
 @app.after_request
 def set_security_headers(response):
@@ -107,10 +111,12 @@ def set_security_headers(response):
     try:
         import time
         from flask import g
-        latency_ms = (time.time() - g._start_time) * 1000
-        from routes.scaling_routes import record_request_latency
-        record_request_latency(latency_ms, response.status_code >= 500)
-    except Exception:
+        if hasattr(g, '_start_time'):
+            latency_ms = (time.time() - g._start_time) * 1000
+            from routes.scaling_routes import record_request_latency
+            record_request_latency(latency_ms, response.status_code >= 500)
+    except (RuntimeError, AttributeError):
+        # Ignore if called outside request context
         pass
     # Security headers
     response.headers['X-Content-Type-Options'] = 'nosniff'
