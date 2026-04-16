@@ -1,0 +1,19 @@
+{
+  "name": "FlowBridge — Hybrid File Transfer",
+  "short_name": "FlowBridge",
+  "description": "Secure file sharing with E2E encryption, room-based transfer, and OTP protection.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0F0F1A",
+  "theme_color": "#6C63FF",
+  "orientation": "any",
+  "icons": [
+    {
+      "src": "/static/favicon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "categories": ["utilities", "productivity"]
+}

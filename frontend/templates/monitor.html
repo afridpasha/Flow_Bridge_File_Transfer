@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowBridge — System Monitor</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .monitor-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.5rem; margin: 2rem 0; }
+        .metric-card { background: var(--bg-card); border-radius: 12px; padding: 1.5rem; border: 1px solid var(--border); }
+        .metric-value { font-size: 2.5rem; font-weight: 700; color: var(--primary); }
+        .metric-label { font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem; }
+        .progress-bar { height: 8px; background: var(--bg-input); border-radius: 4px; margin-top: 0.75rem; overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: 4px; transition: width 0.5s ease; }
+        .progress-fill.low { background: var(--success); }
+        .progress-fill.medium { background: var(--warning); }
+        .progress-fill.high { background: var(--danger); }
+        .instance-list { margin-top: 1rem; }
+        .instance-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: var(--bg-input); border-radius: 8px; margin-bottom: 0.5rem; }
+        .status-dot { width: 10px; height: 10px; border-radius: 50%; background: var(--success); display: inline-block; margin-right: 0.5rem; }
+        .refresh-btn { background: var(--primary); color: white; border: none; padding: 0.5rem 1.25rem; border-radius: 8px; cursor: pointer; font-size: 0.9rem; transition: var(--transition); }
+        .refresh-btn:hover { opacity: 0.85; transform: translateY(-2px); }
+        .log-box { background: var(--bg-input); border-radius: 8px; padding: 1rem; font-family: var(--font-mono); font-size: 0.8rem; max-height: 200px; overflow-y: auto; color: var(--text-secondary); border: 1px solid var(--border); }
+        .container { max-width: 1200px; margin: 0 auto; padding: 2rem 1rem; }
+        
+        @media (max-width: 768px) {
+            .container { padding: 1rem; }
+            .monitor-grid { gap: 1rem; }
+            .metric-value { font-size: 2rem; }
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand">
+            <img src="/static/favicon.svg" alt="FlowBridge Logo" style="width: 28px; height: 28px; margin-right: 8px; vertical-align: middle;">
+            FlowBridge Monitor
+        </div>
+        <div class="nav-actions">
+            <a href="/dashboard" class="btn btn-ghost btn-sm">← Dashboard</a>
+            <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">🌙</button>
+            <button class="refresh-btn" onclick="loadMetrics()">↻ Refresh</button>
+        </div>
+    </nav>
+
+    <div class="container">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1.5rem;flex-wrap:wrap;gap:1rem;">
+            <h1 style="margin:0;color:var(--text-primary);">⚡ System Monitor</h1>
+        </div>
+
+        <div class="monitor-grid" id="metricsGrid">
+            <div class="metric-card">
+                <div class="metric-value" id="cpuValue">—</div>
+                <div class="metric-label">CPU Usage</div>
+                <div class="progress-bar"><div class="progress-fill" id="cpuBar" style="width:0%"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value" id="memValue">—</div>
+                <div class="metric-label">Memory Usage</div>
+                <div class="progress-bar"><div class="progress-fill" id="memBar" style="width:0%"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value" id="diskValue">—</div>
+                <div class="metric-label">Disk Usage</div>
+                <div class="progress-bar"><div class="progress-fill" id="diskBar" style="width:0%"></div></div>
+            </div>
+            <div class="metric-card">
+                <div class="metric-value" id="instanceCount">—</div>
+                <div class="metric-label">Active Instances</div>
+            </div>
+        </div>
+
+        <div class="metric-card" style="margin-bottom:1.5rem;">
+            <h3 style="margin-top:0;color:var(--text-primary);">🖥️ Running Instances</h3>
+            <div class="instance-list" id="instanceList">Loading...</div>
+        </div>
+
+        <div class="metric-card">
+            <h3 style="margin-top:0;color:var(--text-primary);">📋 Scaling Logs</h3>
+            <div class="log-box" id="logBox">Loading logs...</div>
+        </div>
+    </div>
+
+    <script>
+        const token = localStorage.getItem('token');
+
+        // ===== Theme Management =====
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme');
+            const next = current === 'light' ? null : 'light';
+            if (next) {
+                document.documentElement.setAttribute('data-theme', 'light');
+                localStorage.setItem('theme', 'light');
+                document.getElementById('themeBtn').textContent = '☀️';
+            } else {
+                document.documentElement.removeAttribute('data-theme');
+                localStorage.setItem('theme', 'dark');
+                document.getElementById('themeBtn').textContent = '🌙';
+            }
+        }
+
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+            document.getElementById('themeBtn').textContent = '☀️';
+        }
+
+        function setBar(barId, value) {
+            const bar = document.getElementById(barId);
+            bar.style.width = value + '%';
+            bar.className = 'progress-fill ' + (value < 50 ? 'low' : value < 80 ? 'medium' : 'high');
+        }
+
+        async function loadMetrics() {
+            try {
+                const res = await fetch('/api/scaling/metrics', { headers: { 'Authorization': 'Bearer ' + token } });
+                const data = await res.json();
+                if (data.success) {
+                    const m = data.metrics;
+                    document.getElementById('cpuValue').textContent = m.cpu_percent.toFixed(1) + '%';
+                    document.getElementById('memValue').textContent = m.memory_percent.toFixed(1) + '%';
+                    document.getElementById('diskValue').textContent = m.disk_percent.toFixed(1) + '%';
+                    setBar('cpuBar', m.cpu_percent);
+                    setBar('memBar', m.memory_percent);
+                    setBar('diskBar', m.disk_percent);
+                }
+            } catch (e) { console.error(e); }
+
+            try {
+                const res = await fetch('/api/scaling/instances', { headers: { 'Authorization': 'Bearer ' + token } });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('instanceCount').textContent = data.total;
+                    document.getElementById('instanceList').innerHTML = data.instances.map(inst => `
+                        <div class="instance-item">
+                            <span><span class="status-dot"></span>Instance :${inst.port} (PID ${inst.pid})</span>
+                            <span style="color:#888;font-size:0.85rem;">CPU: ${inst.metrics.cpu_percent.toFixed(1)}% | MEM: ${inst.metrics.memory_percent.toFixed(1)}%</span>
+                        </div>
+                    `).join('');
+                }
+            } catch (e) { console.error(e); }
+
+            try {
+                const res = await fetch('/api/scaling/logs', { headers: { 'Authorization': 'Bearer ' + token } });
+                const data = await res.json();
+                const logBox = document.getElementById('logBox');
+                logBox.textContent = data.logs && data.logs.length ? data.logs.join('\n') : 'No scaling events recorded.';
+                logBox.scrollTop = logBox.scrollHeight;
+            } catch (e) { console.error(e); }
+        }
+
+        loadMetrics();
+        setInterval(loadMetrics, 10000);
+    </script>
+</body>
+</html>

@@ -1,0 +1,1119 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowBridge — Transfer</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#6C63FF">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js" 
+            onerror="this.onerror=null; this.src='/socket.io/socket.io.js';" crossorigin="anonymous"></script>
+</head>
+<body>
+    <nav class="navbar" role="navigation" aria-label="Main navigation">
+        <div class="nav-brand" style="cursor:pointer;" onclick="window.location.href='/dashboard'">
+            <img src="/static/favicon.svg" alt="FlowBridge Logo" style="width: 28px; height: 28px; margin-right: 8px; vertical-align: middle;">
+            FlowBridge
+        </div>
+        <div class="nav-actions">
+            <a href="/activity" class="btn btn-ghost btn-sm" title="Activity" aria-label="Activity feed">📋</a>
+            <a href="/settings" class="btn btn-ghost btn-sm" title="Settings" aria-label="Settings">⚙️</a>
+            <span class="nav-user" id="navUser"></span>
+            <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">🌙</button>
+            <a href="/dashboard" class="btn btn-ghost btn-sm">← Back</a>
+            <button class="btn btn-danger btn-sm" onclick="logout()" aria-label="Log out">Logout</button>
+        </div>
+    </nav>
+
+    <div class="transfer-layout">
+        <!-- ===== SIDEBAR: File Browser ===== -->
+        <div class="sidebar">
+            <div class="sidebar-title">📁 My Files</div>
+
+            <!-- Search -->
+            <div class="sidebar-search">
+                <input type="text" id="searchInput" placeholder="🔍 Search files..." oninput="debounceSearch()">
+            </div>
+
+            <!-- Sort Controls -->
+            <div style="display:flex;gap:0.5rem;margin-bottom:0.75rem;">
+                <select id="sortBy" onchange="loadFiles()" style="flex:1;padding:0.4rem;background:var(--bg-input);border:1px solid var(--border);border-radius:var(--radius-sm);color:var(--text-primary);font-size:0.8rem;">
+                    <option value="uploaded_at">Recent</option>
+                    <option value="filename">Name</option>
+                    <option value="size">Size</option>
+                </select>
+                <button class="btn btn-ghost btn-sm" onclick="toggleSort()" id="sortOrderBtn" title="Toggle sort direction">↓</button>
+            </div>
+
+            <!-- Folder Breadcrumbs -->
+            <div id="breadcrumbs" style="margin-bottom:0.75rem;"></div>
+
+            <!-- Folders -->
+            <div id="folderList"></div>
+
+            <!-- Files -->
+            <div id="fileList">
+                <div class="empty-state">
+                    <div class="skeleton skeleton-block" style="margin-bottom:0.5rem;"></div>
+                    <div class="skeleton skeleton-block" style="margin-bottom:0.5rem;"></div>
+                    <div class="skeleton skeleton-block"></div>
+                </div>
+            </div>
+
+            <!-- Storage -->
+            <div class="storage-bar" style="margin-top:1rem;">
+                <div class="storage-track">
+                    <div class="storage-fill" id="storageFill" style="width:0%"></div>
+                </div>
+                <div class="storage-text">
+                    <span id="storageUsed">-</span>
+                    <span id="storageQuota">-</span>
+                </div>
+            </div>
+
+            <!-- Sidebar Actions -->
+            <div style="margin-top:0.75rem;display:flex;flex-wrap:wrap;gap:0.4rem;">
+                <button class="btn btn-ghost btn-sm" onclick="showCreateFolder()">📁 New Folder</button>
+                <button class="btn btn-ghost btn-sm" onclick="viewTrash()">🗑️ Trash</button>
+            </div>
+        </div>
+
+        <!-- ===== MAIN CONTENT ===== -->
+        <div class="main-content">
+            <!-- Upload Zone -->
+            <div class="section-title">📤 Upload & Transfer</div>
+            <div class="section-subtitle">Drag & drop files or click to browse. Then share or send via IP.</div>
+
+            <div class="upload-zone" id="uploadZone"
+                 onclick="document.getElementById('fileInput').click()"
+                 ondragover="event.preventDefault(); this.classList.add('drag-over')"
+                 ondragleave="this.classList.remove('drag-over')"
+                 ondrop="handleDrop(event)">
+                <div class="upload-zone-icon">📂</div>
+                <div class="upload-zone-text">Drop files here or click to browse</div>
+                <div class="upload-zone-hint">Supports all file types • Max 2GB per file</div>
+            </div>
+            <input type="file" id="fileInput" multiple hidden onchange="handleFileSelect(event)">
+            <input type="file" id="folderInput" webkitdirectory directory multiple hidden onchange="handleFileSelect(event)">
+            <div style="display:flex;gap:0.5rem;margin-top:0.5rem;">
+                <button class="btn btn-ghost btn-sm" onclick="document.getElementById('fileInput').click()">📄 Files</button>
+                <button class="btn btn-ghost btn-sm" onclick="document.getElementById('folderInput').click()">📁 Upload Folder</button>
+            </div>
+
+            <!-- Upload Progress -->
+            <div id="uploadProgress" style="display:none;">
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="uploadProgressFill"></div>
+                    </div>
+                    <div class="progress-text">
+                        <span id="uploadFileName">-</span>
+                        <span id="uploadPercent">0%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- ===== ACTION SECTIONS ===== -->
+            <div id="actionSection" style="display:none; margin-top:1.5rem;">
+                <!-- Selected File Info -->
+                <div class="card" id="selectedFileCard" style="margin-bottom:1rem;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                        <div>
+                            <div style="font-weight:600;" id="selectedFileName">-</div>
+                            <div style="color:var(--text-muted);font-size:0.85rem;" id="selectedFileMeta">-</div>
+                        </div>
+                        <div style="display:flex;gap:0.5rem;">
+                            <button class="btn btn-ghost btn-sm" onclick="previewFile()" title="Preview">👁️</button>
+                            <button class="btn btn-ghost btn-sm" onclick="downloadFile()" title="Download">⬇️</button>
+                            <button class="btn btn-ghost btn-sm" onclick="deleteFile()" title="Delete" style="color:var(--danger);">🗑️</button>
+                        </div>
+                    </div>
+                    <!-- Tags -->
+                    <div id="fileTags" style="margin-top:0.5rem;display:flex;gap:0.3rem;flex-wrap:wrap;"></div>
+                </div>
+
+                <!-- Web Share Section -->
+                <div class="card" id="webShareSection">
+                    <div class="section-title">🔗 Share via Link</div>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1rem;margin:1rem 0;">
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label">Expiry</label>
+                            <select class="form-select" id="shareExpiry">
+                                <option value="1">1 hour</option>
+                                <option value="24" selected>24 hours</option>
+                                <option value="168">7 days</option>
+                                <option value="720">30 days</option>
+                            </select>
+                        </div>
+                        <div class="form-group" style="margin:0;">
+                            <label class="form-label">Max Downloads</label>
+                            <select class="form-select" id="shareMaxDownloads">
+                                <option value="1">1</option>
+                                <option value="5">5</option>
+                                <option value="10" selected>10</option>
+                                <option value="50">50</option>
+                                <option value="100">100</option>
+                            </select>
+                        </div>
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">Password Protection (optional)</label>
+                        <input class="form-input" type="password" id="sharePassword" placeholder="Leave empty for no password">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">📧 Email Notification (optional)</label>
+                        <input class="form-input" type="email" id="shareEmail" placeholder="recipient@example.com">
+                    </div>
+                    <div class="form-group">
+                        <label class="form-label">💬 Custom Message (optional)</label>
+                        <textarea class="form-input" id="shareMessage" rows="2" placeholder="Add a personal message..." style="resize:vertical;"></textarea>
+                    </div>
+                    <div style="display:flex;align-items:center;gap:0.5rem;margin-bottom:1rem;">
+                        <input type="checkbox" id="encryptToggle" style="width:18px;height:18px;accent-color:var(--primary);">
+                        <label for="encryptToggle" style="font-size:0.9rem;cursor:pointer;">🔒 Encrypt file (AES-256-GCM, zero-knowledge)</label>
+                    </div>
+                    <button class="btn btn-primary" id="shareBtn" onclick="generateShareLink()">
+                        🔗 Generate Share Link
+                    </button>
+                </div>
+
+                <!-- Share Result -->
+                <div class="share-result" id="shareResult" style="display:none;">
+                    <div class="share-field">
+                        <label>Share Link</label>
+                        <div class="copy-row">
+                            <input type="text" id="shareLink" readonly>
+                            <button class="btn btn-secondary btn-sm" onclick="copyToClipboard('shareLink')">📋 Copy</button>
+                        </div>
+                    </div>
+                    <div class="share-field">
+                        <label>OTP Code</label>
+                        <div class="otp-display" id="otpDisplay">-</div>
+                    </div>
+                    <div id="qrSection" class="qr-container" style="display:none;">
+                        <label style="display:block;font-size:0.8rem;color:var(--text-muted);margin-bottom:0.5rem;text-transform:uppercase;letter-spacing:0.05em;font-weight:600;">QR Code</label>
+                        <img id="qrImage" alt="QR Code">
+                    </div>
+                    <div style="text-align:center;margin-top:0.5rem;">
+                        <div style="font-size:0.8rem;color:var(--text-muted);" id="shareExpireInfo">-</div>
+                    </div>
+                </div>
+
+                <!-- Room Code Transfer Section -->
+                <div class="card" id="roomTransferSection" style="margin-top:1rem;">
+                    <div class="section-title">📡 Mode 1: Direct Transfer (Room Code)</div>
+                    <p style="color:var(--text-secondary);font-size:0.85rem;margin:0.5rem 0 1rem;">
+                        Send files directly to anyone — no VPN, no IP address needed! The receiver goes to
+                        <a href="/receive" target="_blank" style="color:var(--primary);">/receive</a> to get a room code.
+                    </p>
+                    <div class="form-group">
+                        <label class="form-label">Receiver's Room Code</label>
+                        <input class="form-input" type="text" id="roomCode" placeholder="e.g., A3K9W2"
+                               maxlength="6" style="font-family:'JetBrains Mono',monospace;font-size:1.2rem;letter-spacing:0.3em;text-transform:uppercase;text-align:center;">
+                    </div>
+                    <button class="btn btn-success" id="sendRoomBtn" onclick="sendViaRoom()">📡 Send to Room</button>
+
+                    <!-- Transfer Progress -->
+                    <div id="roomTransferProgress" style="display:none;margin-top:1rem;">
+                        <div class="card" style="background:var(--bg-input);">
+                            <div style="font-weight:500;margin-bottom:0.5rem;" id="roomTransferStatus">Connecting...</div>
+                            <div class="progress-bar-bg" style="height:8px;margin-bottom:0.5rem;">
+                                <div class="progress-bar-fill" id="roomProgressFill" style="width:0%;transition:width 0.3s;"></div>
+                            </div>
+                            <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:var(--text-muted);">
+                                <span id="roomProgressPct">0%</span>
+                                <span id="roomProgressChunks">-</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Bulk Actions Bar -->
+            <div id="bulkBar" style="display:none;margin-top:1rem;" class="card">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <span id="bulkCount">0 files selected</span>
+                    <div style="display:flex;gap:0.5rem;">
+                        <button class="btn btn-danger btn-sm" onclick="bulkDelete()">🗑️ Delete Selected</button>
+                        <button class="btn btn-ghost btn-sm" onclick="clearSelection()">Cancel</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Preview Modal -->
+    <div class="modal-overlay" id="previewModal" style="display:none;" onclick="if(event.target===this)closePreview()">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 id="previewTitle">File Preview</h3>
+                <button class="modal-close" onclick="closePreview()">×</button>
+            </div>
+            <div class="modal-body" id="previewBody">
+                <div class="empty-state animate-pulse">Loading preview...</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+    // ===== State =====
+    const token = localStorage.getItem('token');
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (!token) window.location.href = '/login';
+
+    document.getElementById('navUser').textContent = user.username || '';
+
+    let currentFiles = [];
+    let selectedFileId = null;
+    let selectedFileData = null;
+    let currentFolderId = null;
+    let folderStack = [];
+    let sortOrder = -1;
+    let searchTimeout = null;
+    let selectedFiles = new Set();
+
+    // ===== Theme =====
+    function toggleTheme() {
+        const c = document.documentElement.getAttribute('data-theme');
+        if (c === 'light') {
+            document.documentElement.removeAttribute('data-theme');
+            localStorage.setItem('theme', 'dark');
+            document.getElementById('themeBtn').textContent = '🌙';
+        } else {
+            document.documentElement.setAttribute('data-theme', 'light');
+            localStorage.setItem('theme', 'light');
+            document.getElementById('themeBtn').textContent = '☀️';
+        }
+    }
+    if (localStorage.getItem('theme') === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        document.getElementById('themeBtn').textContent = '☀️';
+    }
+
+    // ===== Toast =====
+    function showToast(message, type = 'info') {
+        const c = document.getElementById('toastContainer');
+        const icons = { success: '✓', error: '✗', info: 'ℹ', warning: '⚠' };
+        const t = document.createElement('div');
+        t.className = `toast toast-${type}`;
+        t.innerHTML = `<span class="toast-icon">${icons[type]||'ℹ'}</span><span class="toast-message">${escapeHtml(message)}</span><span class="toast-close" onclick="this.parentElement.remove()">×</span>`;
+        c.appendChild(t);
+        setTimeout(() => t.remove(), 5000);
+    }
+
+    // ===== XSS Prevention =====
+    function escapeHtml(text) {
+        const d = document.createElement('div');
+        d.textContent = text;
+        return d.innerHTML;
+    }
+
+    // ===== File Icon Helper =====
+    function getFileIcon(ext) {
+        const icons = {
+            pdf: '📄', doc: '📝', docx: '📝', txt: '📃', md: '📃',
+            png: '🖼️', jpg: '🖼️', jpeg: '🖼️', gif: '🖼️', svg: '🖼️', webp: '🖼️', bmp: '🖼️',
+            mp4: '🎬', avi: '🎬', mkv: '🎬', mov: '🎬', webm: '🎬',
+            mp3: '🎵', wav: '🎵', ogg: '🎵', flac: '🎵',
+            zip: '📦', rar: '📦', '7z': '📦', tar: '📦', gz: '📦',
+            py: '🐍', js: '💛', html: '🌐', css: '🎨', json: '📋',
+            xls: '📊', xlsx: '📊', csv: '📊', ppt: '📊', pptx: '📊',
+            exe: '⚙️', apk: '📱', dmg: '💽', iso: '💿',
+        };
+        return icons[ext] || '📎';
+    }
+
+    // ===== Load Files =====
+    async function loadFiles() {
+        const search = document.getElementById('searchInput').value;
+        const sortBy = document.getElementById('sortBy').value;
+
+        let url = `/api/user/files?sort_by=${sortBy}&sort_order=${sortOrder}`;
+        if (currentFolderId) url += `&folder_id=${currentFolderId}`;
+        if (search) url += `&search=${encodeURIComponent(search)}`;
+
+        try {
+            const res = await fetch(url, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            const data = await res.json();
+
+            if (!data.success) {
+                if (res.status === 401) return logout();
+                return;
+            }
+
+            currentFiles = data.files;
+
+            // Update storage
+            document.getElementById('storageUsed').textContent = data.storage_used_formatted;
+            document.getElementById('storageQuota').textContent = data.storage_quota_formatted;
+            const pct = data.storage_quota > 0 ? Math.round((data.storage_used / data.storage_quota) * 100) : 0;
+            document.getElementById('storageFill').style.width = pct + '%';
+
+            // Render folders
+            const folderHtml = data.folders.map(f => `
+                <div class="folder-item" onclick="openFolder('${f._id}', '${escapeHtml(f.name)}')">
+                    <span class="folder-icon">📁</span>
+                    <span class="folder-name">${escapeHtml(f.name)}</span>
+                </div>
+            `).join('');
+
+            document.getElementById('folderList').innerHTML = folderHtml;
+
+            // Render files
+            if (data.files.length === 0 && data.folders.length === 0) {
+                document.getElementById('fileList').innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">📭</div>
+                        <div class="empty-state-text">No files yet</div>
+                        <div class="empty-state-hint">Upload files using the drag & drop area</div>
+                    </div>`;
+                return;
+            }
+
+            const fileHtml = data.files.map(f => `
+                <div class="file-item ${selectedFileId === f.file_id ? 'selected' : ''}"
+                     onclick="selectFile('${f.file_id}')"
+                     ondblclick="previewFile('${f.file_id}')">
+                    <span class="file-icon">${getFileIcon(f.extension)}</span>
+                    <div class="file-info">
+                        <div class="file-name" title="${escapeHtml(f.filename)}">${escapeHtml(f.filename)}</div>
+                        <div class="file-size">${f.size_formatted}</div>
+                    </div>
+                </div>
+            `).join('');
+
+            document.getElementById('fileList').innerHTML = fileHtml;
+
+            // Render breadcrumbs
+            renderBreadcrumbs();
+
+        } catch (err) {
+            console.error('Load files error:', err);
+        }
+    }
+
+    // ===== Breadcrumbs =====
+    function renderBreadcrumbs() {
+        const bc = document.getElementById('breadcrumbs');
+        if (folderStack.length === 0) {
+            bc.innerHTML = '';
+            return;
+        }
+        let html = `<span style="cursor:pointer;color:var(--primary);font-size:0.85rem;" onclick="goToRoot()">🏠 Root</span>`;
+        folderStack.forEach((f, i) => {
+            html += ` <span style="color:var(--text-muted);">›</span> `;
+            if (i < folderStack.length - 1) {
+                html += `<span style="cursor:pointer;color:var(--primary);font-size:0.85rem;" onclick="goToFolder(${i})">${escapeHtml(f.name)}</span>`;
+            } else {
+                html += `<span style="font-size:0.85rem;font-weight:600;">${escapeHtml(f.name)}</span>`;
+            }
+        });
+        bc.innerHTML = html;
+    }
+
+    function openFolder(id, name) {
+        folderStack.push({ id, name });
+        currentFolderId = id;
+        loadFiles();
+    }
+
+    function goToRoot() {
+        folderStack = [];
+        currentFolderId = null;
+        loadFiles();
+    }
+
+    function goToFolder(index) {
+        folderStack = folderStack.slice(0, index + 1);
+        currentFolderId = folderStack[index].id;
+        loadFiles();
+    }
+
+    // ===== Search =====
+    function debounceSearch() {
+        clearTimeout(searchTimeout);
+        searchTimeout = setTimeout(loadFiles, 300);
+    }
+
+    // ===== Sort =====
+    function toggleSort() {
+        sortOrder = sortOrder === -1 ? 1 : -1;
+        document.getElementById('sortOrderBtn').textContent = sortOrder === -1 ? '↓' : '↑';
+        loadFiles();
+    }
+
+    // ===== Select File =====
+    function selectFile(fileId) {
+        selectedFileId = fileId;
+        selectedFileData = currentFiles.find(f => f.file_id === fileId);
+        if (!selectedFileData) return;
+
+        document.getElementById('actionSection').style.display = 'block';
+        document.getElementById('selectedFileName').textContent = selectedFileData.filename;
+        document.getElementById('selectedFileMeta').textContent =
+            `${selectedFileData.size_formatted} • ${selectedFileData.extension.toUpperCase()} • ${selectedFileData.uploaded_at}`;
+
+        // Render tags
+        const tagHtml = (selectedFileData.tags || []).map(t => `
+            <span class="tag">${escapeHtml(t)}<span class="tag-remove" onclick="event.stopPropagation();removeTag('${selectedFileId}','${escapeHtml(t)}')">×</span></span>
+        `).join('');
+        document.getElementById('fileTags').innerHTML = tagHtml;
+
+        // Hide previous share result
+        document.getElementById('shareResult').style.display = 'none';
+
+        // Highlight in sidebar
+        loadFiles();
+
+        // Scroll to action section on mobile
+        if (window.innerWidth <= 1024) {
+            document.getElementById('actionSection').scrollIntoView({ behavior: 'smooth' });
+        }
+    }
+
+    // ===== File Upload (Drag & Drop + Click) =====
+    function handleDrop(e) {
+        e.preventDefault();
+        e.currentTarget.classList.remove('drag-over');
+        const files = e.dataTransfer.files;
+        if (files.length > 0) uploadFiles(files);
+    }
+
+    function handleFileSelect(e) {
+        if (e.target.files.length > 0) uploadFiles(e.target.files);
+    }
+
+    async function uploadFiles(files) {
+        const progressDiv = document.getElementById('uploadProgress');
+        const progressFill = document.getElementById('uploadProgressFill');
+        const fileName = document.getElementById('uploadFileName');
+        const percentText = document.getElementById('uploadPercent');
+
+        progressDiv.style.display = 'block';
+
+        for (let i = 0; i < files.length; i++) {
+            const file = files[i];
+            fileName.textContent = `Uploading: ${file.name} (${i + 1}/${files.length})`;
+            progressFill.style.width = '0%';
+            percentText.textContent = '0%';
+
+            const formData = new FormData();
+            formData.append('file', file);
+            if (currentFolderId) formData.append('folder_id', currentFolderId);
+
+            try {
+                const xhr = new XMLHttpRequest();
+                xhr.open('POST', '/api/user/upload');
+                xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+
+                xhr.upload.addEventListener('progress', (e) => {
+                    if (e.lengthComputable) {
+                        const pct = Math.round((e.loaded / e.total) * 100);
+                        progressFill.style.width = pct + '%';
+                        percentText.textContent = pct + '%';
+                    }
+                });
+
+                await new Promise((resolve, reject) => {
+                    xhr.onload = () => {
+                        try {
+                            const data = JSON.parse(xhr.responseText);
+                            if (data.success) {
+                                showToast(`Uploaded: ${file.name}`, 'success');
+                            } else {
+                                (data.errors || []).forEach(e => showToast(e, 'error'));
+                                if (!data.success && (!data.errors || data.errors.length === 0)) {
+                                    showToast('Upload failed', 'error');
+                                }
+                            }
+                        } catch(e) {
+                            showToast('Upload failed', 'error');
+                        }
+                        resolve();
+                    };
+                    xhr.onerror = () => { showToast(`Upload failed: ${file.name}`, 'error'); resolve(); };
+                    xhr.send(formData);
+                });
+
+            } catch (err) {
+                showToast(`Error uploading ${file.name}`, 'error');
+            }
+        }
+
+        progressDiv.style.display = 'none';
+        document.getElementById('fileInput').value = '';
+        loadFiles();
+    }
+
+    // ===== Share Link =====
+    async function generateShareLink() {
+        if (!selectedFileId) return showToast('Select a file first', 'warning');
+
+        const btn = document.getElementById('shareBtn');
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner">⟳</span> Generating...';
+
+        try {
+            const res = await fetch('/api/share/generate', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': 'Bearer ' + token
+                },
+                body: JSON.stringify({
+                    file_id: selectedFileId,
+                    expiry_hours: parseInt(document.getElementById('shareExpiry').value),
+                    max_downloads: parseInt(document.getElementById('shareMaxDownloads').value),
+                    password: document.getElementById('sharePassword').value || null,
+                    message: document.getElementById('shareMessage').value || '',
+                    notify_email: document.getElementById('shareEmail').value || '',
+                })
+            });
+
+            const data = await res.json();
+
+            if (data.success) {
+                document.getElementById('shareLink').value = data.share_link;
+                document.getElementById('otpDisplay').textContent = data.otp;
+                document.getElementById('shareResult').style.display = 'block';
+                document.getElementById('shareExpireInfo').textContent =
+                    `Expires: ${data.expires_at} • Max: ${data.max_downloads} downloads`;
+
+                if (data.qr_code) {
+                    document.getElementById('qrImage').src = data.qr_code;
+                    document.getElementById('qrSection').style.display = 'block';
+                }
+
+                showToast('Share link generated!', 'success');
+            } else {
+                showToast(data.error || 'Failed to generate link', 'error');
+            }
+        } catch (err) {
+            showToast('Connection error', 'error');
+        }
+
+        btn.disabled = false;
+        btn.innerHTML = '🔗 Generate Share Link';
+    }
+
+    // ===== Copy to Clipboard =====
+    async function copyToClipboard(inputId) {
+        const input = document.getElementById(inputId);
+        try {
+            await navigator.clipboard.writeText(input.value);
+            showToast('Copied to clipboard!', 'success');
+        } catch (err) {
+            input.select();
+            document.execCommand('copy');
+            showToast('Copied!', 'success');
+        }
+    }
+
+    // ===== Download File =====
+    function downloadFile() {
+        if (!selectedFileId) return;
+        window.open(`/api/user/download/${selectedFileId}?token=${token}`, '_blank');
+    }
+
+    // ===== Delete File =====
+    async function deleteFile() {
+        if (!selectedFileId || !selectedFileData) return;
+        if (!confirm(`Move "${selectedFileData.filename}" to trash?`)) return;
+
+        try {
+            const res = await fetch(`/api/user/delete/${selectedFileId}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('File moved to trash', 'success');
+                selectedFileId = null;
+                selectedFileData = null;
+                document.getElementById('actionSection').style.display = 'none';
+                loadFiles();
+            } else {
+                showToast(data.error || 'Delete failed', 'error');
+            }
+        } catch (err) {
+            showToast('Delete failed', 'error');
+        }
+    }
+
+    // ===== Preview File =====
+    async function previewFile(fileId) {
+        const fid = fileId || selectedFileId;
+        if (!fid) return;
+
+        const file = currentFiles.find(f => f.file_id === fid);
+        if (!file) return;
+
+        document.getElementById('previewTitle').textContent = file.filename;
+        document.getElementById('previewBody').innerHTML = '<div class="empty-state animate-pulse">Loading preview...</div>';
+        document.getElementById('previewModal').style.display = 'flex';
+
+        if (file.preview_type === 'image') {
+            document.getElementById('previewBody').innerHTML = `<img src="/api/user/preview/${fid}?token=${token}" alt="${escapeHtml(file.filename)}" style="max-width:100%;border-radius:8px;">`;
+        } else if (file.preview_type === 'text') {
+            try {
+                const res = await fetch(`/api/user/preview/${fid}`, {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('previewBody').innerHTML = `<pre style="background:var(--bg-input);padding:1rem;border-radius:8px;overflow-x:auto;max-height:60vh;">${escapeHtml(data.content)}</pre>`;
+                } else {
+                    document.getElementById('previewBody').innerHTML = '<div class="empty-state">Preview unavailable</div>';
+                }
+            } catch (err) {
+                document.getElementById('previewBody').innerHTML = '<div class="empty-state">Preview unavailable</div>';
+            }
+        } else if (file.preview_type === 'video') {
+            document.getElementById('previewBody').innerHTML = `<video controls style="width:100%;border-radius:8px;"><source src="/api/user/preview/${fid}?token=${token}"></video>`;
+        } else if (file.preview_type === 'audio') {
+            document.getElementById('previewBody').innerHTML = `<audio controls style="width:100%;"><source src="/api/user/preview/${fid}?token=${token}"></audio>`;
+        } else if (file.preview_type === 'pdf') {
+            document.getElementById('previewBody').innerHTML = `<iframe src="/api/user/preview/${fid}?token=${token}" style="width:100%;height:70vh;border:none;border-radius:8px;"></iframe>`;
+        } else {
+            document.getElementById('previewBody').innerHTML = `<div class="empty-state"><div class="empty-state-icon">📎</div><div>Preview not available for .${escapeHtml(file.extension)} files</div></div>`;
+        }
+    }
+
+    function closePreview() {
+        document.getElementById('previewModal').style.display = 'none';
+    }
+
+    // ===== Create Folder =====
+    function showCreateFolder() {
+        const name = prompt('Folder name:');
+        if (!name || !name.trim()) return;
+        fetch('/api/user/folders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+            body: JSON.stringify({ name: name.trim(), parent_id: currentFolderId })
+        }).then(r => r.json()).then(d => {
+            if (d.success) { showToast('Folder created', 'success'); loadFiles(); }
+            else showToast(d.error || 'Failed', 'error');
+        });
+    }
+
+    // ===== Trash =====
+    async function viewTrash() {
+        try {
+            const res = await fetch('/api/user/trash', {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            const data = await res.json();
+
+            if (data.files.length === 0) return showToast('Trash is empty', 'info');
+
+            const list = data.files.map(f =>
+                `${f.filename} (${f.size_formatted}) — deleted ${f.deleted_at}`
+            ).join('\n');
+            alert('🗑️ Trashed Files:\n\n' + list + '\n\nUse the API to restore files.');
+        } catch (err) {
+            showToast('Could not load trash', 'error');
+        }
+    }
+
+    // ===== Tags =====
+    async function removeTag(fileId, tag) {
+        try {
+            await fetch(`/api/user/file/${fileId}/tags/${tag}`, {
+                method: 'DELETE',
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            loadFiles();
+            if (selectedFileId === fileId) selectFile(fileId);
+        } catch (err) { /* ignore */ }
+    }
+
+    // ===== Bulk Delete =====
+    async function bulkDelete() {
+        if (selectedFiles.size === 0) return;
+        if (!confirm(`Delete ${selectedFiles.size} files?`)) return;
+
+        try {
+            const res = await fetch('/api/user/bulk-delete', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ file_ids: Array.from(selectedFiles) })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast(data.message, 'success');
+                selectedFiles.clear();
+                loadFiles();
+            }
+        } catch (err) { showToast('Bulk delete failed', 'error'); }
+    }
+
+    // ===== SocketIO for Room Transfer =====
+    let socket;
+    let currentTransferRoom = null;
+
+    // Initialize Socket.IO with proper configuration
+    function initSocket() {
+        if (typeof io === 'undefined') {
+            console.warn('Socket.IO not loaded - room transfer disabled');
+            return;
+        }
+        
+        socket = io(window.location.origin, {
+            transports: ['websocket', 'polling'],
+            reconnection: true,
+            reconnectionDelay: 1000,
+            reconnectionAttempts: 5,
+            timeout: 20000
+        });
+
+        socket.on('connect', () => {
+            console.log('Socket.IO connected');
+        });
+
+        socket.on('disconnect', () => {
+            console.log('Socket.IO disconnected');
+        });
+
+        // Room joined confirmation
+        socket.on('room_joined', (data) => {
+            currentTransferRoom = data.room;
+            document.getElementById('roomTransferStatus').textContent = `Connected to ${data.receiver}! Sending...`;
+            showToast(`Connected to ${data.receiver}!`, 'success');
+            // Now send the file
+            _sendFileViaRoom();
+        });
+
+        socket.on('room_error', (data) => {
+            showToast(data.error, 'error');
+            document.getElementById('sendRoomBtn').disabled = false;
+            document.getElementById('sendRoomBtn').innerHTML = '📡 Send to Room';
+            document.getElementById('roomTransferProgress').style.display = 'none';
+        });
+
+        socket.on('transfer_progress', (data) => {
+            document.getElementById('roomProgressFill').style.width = data.progress + '%';
+            document.getElementById('roomProgressPct').textContent = data.progress + '%';
+            document.getElementById('roomProgressChunks').textContent = `${data.chunk_index + 1} / ${data.total_chunks} chunks`;
+        });
+
+        socket.on('transfer_complete', (data) => {
+            if (data.success) {
+                document.getElementById('roomTransferStatus').textContent = '✅ Transfer complete!';
+                document.getElementById('roomProgressFill').style.width = '100%';
+                showToast('File sent successfully!', 'success');
+            }
+            setTimeout(() => {
+                document.getElementById('sendRoomBtn').disabled = false;
+                document.getElementById('sendRoomBtn').innerHTML = '📡 Send to Room';
+            }, 2000);
+        });
+    }
+
+    // Room Code Transfer
+    async function sendViaRoom() {
+        if (!selectedFileId || !selectedFileData) return showToast('Select a file first', 'warning');
+
+        const code = document.getElementById('roomCode').value.trim().toUpperCase();
+        if (!code || code.length < 4) return showToast('Enter a valid room code', 'warning');
+
+        document.getElementById('sendRoomBtn').disabled = true;
+        document.getElementById('sendRoomBtn').innerHTML = '<span class="spinner">⟳</span> Connecting...';
+        document.getElementById('roomTransferProgress').style.display = 'block';
+        document.getElementById('roomTransferStatus').textContent = 'Joining room...';
+        document.getElementById('roomProgressFill').style.width = '0%';
+
+        // Join the room first — file send happens in 'room_joined' callback
+        socket.emit('join_transfer_room', {
+            room_code: code,
+            username: user.username || 'Anonymous'
+        });
+    }
+
+    // Internal: send file after room is joined
+    async function _sendFileViaRoom() {
+        try {
+            // Download file from server first
+            document.getElementById('roomTransferStatus').textContent = 'Downloading file from server...';
+
+            const res = await fetch(`/api/user/download/${selectedFileId}`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+
+            if (!res.ok) {
+                showToast('Failed to download file from server', 'error');
+                return;
+            }
+
+            const blob = await res.blob();
+            const arrayBuffer = await blob.arrayBuffer();
+            const uint8 = new Uint8Array(arrayBuffer);
+
+            // Chunk the file (512KB chunks)
+            const CHUNK_SIZE = 512 * 1024;
+            const totalChunks = Math.ceil(uint8.length / CHUNK_SIZE);
+
+            document.getElementById('roomTransferStatus').textContent = `Sending ${selectedFileData.filename}...`;
+
+            // Notify receiver about incoming file
+            socket.emit('file_transfer_start', {
+                room: currentTransferRoom,
+                filename: selectedFileData.filename,
+                file_size: uint8.length,
+                total_chunks: totalChunks,
+            });
+
+            // Send chunks one by one
+            for (let i = 0; i < totalChunks; i++) {
+                const start = i * CHUNK_SIZE;
+                const end = Math.min(start + CHUNK_SIZE, uint8.length);
+                const chunk = uint8.slice(start, end);
+
+                // Convert to Base64 for transport
+                let binary = '';
+                for (let j = 0; j < chunk.length; j++) {
+                    binary += String.fromCharCode(chunk[j]);
+                }
+                const base64Chunk = btoa(binary);
+
+                socket.emit('send_file_chunk', {
+                    room: currentTransferRoom,
+                    chunk: base64Chunk,
+                    chunk_index: i,
+                    total_chunks: totalChunks,
+                    filename: selectedFileData.filename,
+                    file_size: uint8.length,
+                });
+
+                // Small delay to avoid overwhelming the socket
+                if (i % 5 === 4) {
+                    await new Promise(r => setTimeout(r, 50));
+                }
+            }
+
+            // Signal completion
+            socket.emit('file_transfer_complete', {
+                room: currentTransferRoom,
+                filename: selectedFileData.filename,
+                success: true,
+            });
+
+        } catch (err) {
+            console.error('Room transfer error:', err);
+            showToast('Transfer failed: ' + err.message, 'error');
+            document.getElementById('sendRoomBtn').disabled = false;
+            document.getElementById('sendRoomBtn').innerHTML = '📡 Send to Room';
+        }
+    }
+
+    // ===== Logout =====
+    function logout() {
+        localStorage.removeItem('token');
+        localStorage.removeItem('refresh_token');
+        localStorage.removeItem('user');
+        window.location.href = '/login';
+    }
+
+    // ===== Feature #3: E2E Encryption (AES-256-GCM via Web Crypto API) =====
+    async function generateEncryptionKey() {
+        return await crypto.subtle.generateKey(
+            { name: 'AES-GCM', length: 256 },
+            true,
+            ['encrypt', 'decrypt']
+        );
+    }
+
+    async function encryptFile(fileData) {
+        const key = await generateEncryptionKey();
+        const iv = crypto.getRandomValues(new Uint8Array(12));
+        const encrypted = await crypto.subtle.encrypt(
+            { name: 'AES-GCM', iv },
+            key,
+            fileData
+        );
+        const exportedKey = await crypto.subtle.exportKey('raw', key);
+        const keyHex = Array.from(new Uint8Array(exportedKey))
+            .map(b => b.toString(16).padStart(2, '0')).join('');
+        const ivHex = Array.from(iv)
+            .map(b => b.toString(16).padStart(2, '0')).join('');
+        return { encrypted: new Uint8Array(encrypted), keyHex, ivHex };
+    }
+
+    // ===== Feature #23: File Rename =====
+    async function renameFile() {
+        if (!selectedFileId) return showToast('Select a file first', 'warning');
+        const newName = prompt('Enter new filename:', selectedFileData?.filename || '');
+        if (!newName || !newName.trim()) return;
+        try {
+            const res = await fetch(`/api/user/files/${selectedFileId}/rename`, {
+                method: 'PATCH',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ new_name: newName.trim() })
+            });
+            const data = await res.json();
+            if (data.success) { showToast('Renamed!', 'success'); loadFiles(); }
+            else showToast(data.error, 'error');
+        } catch { showToast('Rename failed', 'error'); }
+    }
+
+    // ===== Feature #10: ZIP Download =====
+    async function downloadAsZip() {
+        const selected = document.querySelectorAll('.file-item.selected');
+        if (selected.length === 0) return showToast('Select files first', 'warning');
+        const fileIds = Array.from(selected).map(el => el.dataset.fileId).filter(Boolean);
+        if (fileIds.length === 0 && selectedFileId) fileIds.push(selectedFileId);
+        if (fileIds.length === 0) return showToast('No files selected', 'warning');
+        try {
+            showToast('Creating ZIP...', 'info');
+            const res = await fetch('/api/user/download-zip', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ file_ids: fileIds })
+            });
+            if (!res.ok) { showToast('ZIP failed', 'error'); return; }
+            const blob = await res.blob();
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url; a.download = `flowbridge_${fileIds.length}_files.zip`;
+            document.body.appendChild(a); a.click(); a.remove();
+            URL.revokeObjectURL(url);
+            showToast('ZIP downloaded!', 'success');
+        } catch { showToast('ZIP failed', 'error'); }
+    }
+
+    // ===== Feature #19: File Comments =====
+    async function showComments() {
+        if (!selectedFileId) return showToast('Select a file first', 'warning');
+        try {
+            const res = await fetch(`/api/user/files/${selectedFileId}/comments`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            const data = await res.json();
+            const comments = data.comments || [];
+            let html = `<div style="max-height:300px;overflow-y:auto;margin-bottom:1rem;">`;
+            if (comments.length === 0) {
+                html += `<p style="color:var(--text-muted);text-align:center;">No comments yet</p>`;
+            } else {
+                for (const c of comments) {
+                    html += `<div style="background:var(--bg-input);padding:0.5rem 0.75rem;border-radius:8px;margin-bottom:0.5rem;">
+                        <div style="font-weight:600;font-size:0.85rem;">${escapeHtml(c.user)}</div>
+                        <div style="font-size:0.9rem;margin-top:0.25rem;">${escapeHtml(c.text)}</div>
+                    </div>`;
+                }
+            }
+            html += `</div>`;
+            html += `<div style="display:flex;gap:0.5rem;">
+                <input class="form-input" type="text" id="commentInput" placeholder="Add a comment..." style="flex:1;">
+                <button class="btn btn-primary btn-sm" onclick="addComment()">Send</button>
+            </div>`;
+            // Show in a simple modal/overlay
+            const overlay = document.createElement('div');
+            overlay.id = 'commentOverlay';
+            overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000;';
+            overlay.innerHTML = `<div style="background:var(--bg-card);border-radius:16px;padding:1.5rem;max-width:500px;width:90%;border:1px solid var(--border);">
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                    <div style="font-weight:700;font-size:1.1rem;">💬 Comments — ${escapeHtml(selectedFileData?.filename || '')}</div>
+                    <button class="btn btn-ghost btn-sm" onclick="document.getElementById('commentOverlay').remove()">✕</button>
+                </div>
+                ${html}
+            </div>`;
+            overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+            document.body.appendChild(overlay);
+            document.getElementById('commentInput').focus();
+        } catch { showToast('Failed to load comments', 'error'); }
+    }
+
+    async function addComment() {
+        const text = document.getElementById('commentInput').value.trim();
+        if (!text) return;
+        try {
+            await fetch(`/api/user/files/${selectedFileId}/comments`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ text })
+            });
+            document.getElementById('commentOverlay').remove();
+            showToast('Comment added!', 'success');
+        } catch { showToast('Failed', 'error'); }
+    }
+
+    // ===== Feature #17: Keyboard Shortcuts Help Modal =====
+    function showKeyboardShortcuts() {
+        const overlay = document.createElement('div');
+        overlay.id = 'shortcutsOverlay';
+        overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.7);display:flex;align-items:center;justify-content:center;z-index:1000;';
+        overlay.innerHTML = `<div style="background:var(--bg-card);border-radius:16px;padding:1.5rem;max-width:400px;width:90%;border:1px solid var(--border);">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                <div style="font-weight:700;font-size:1.1rem;">⌨️ Keyboard Shortcuts</div>
+                <button class="btn btn-ghost btn-sm" onclick="document.getElementById('shortcutsOverlay').remove()">✕</button>
+            </div>
+            <div style="display:grid;grid-template-columns:80px 1fr;gap:0.5rem;font-size:0.9rem;">
+                <kbd style="background:var(--bg-input);padding:2px 8px;border-radius:4px;font-family:var(--font-mono);text-align:center;">?</kbd><span>Show shortcuts</span>
+                <kbd style="background:var(--bg-input);padding:2px 8px;border-radius:4px;font-family:var(--font-mono);text-align:center;">Del</kbd><span>Delete selected file</span>
+                <kbd style="background:var(--bg-input);padding:2px 8px;border-radius:4px;font-family:var(--font-mono);text-align:center;">Esc</kbd><span>Close modal/preview</span>
+                <kbd style="background:var(--bg-input);padding:2px 8px;border-radius:4px;font-family:var(--font-mono);text-align:center;">U</kbd><span>Upload files</span>
+                <kbd style="background:var(--bg-input);padding:2px 8px;border-radius:4px;font-family:var(--font-mono);text-align:center;">R</kbd><span>Rename file</span>
+                <kbd style="background:var(--bg-input);padding:2px 8px;border-radius:4px;font-family:var(--font-mono);text-align:center;">C</kbd><span>Comments</span>
+                <kbd style="background:var(--bg-input);padding:2px 8px;border-radius:4px;font-family:var(--font-mono);text-align:center;">Z</kbd><span>Download as ZIP</span>
+            </div>
+        </div>`;
+        overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+        document.body.appendChild(overlay);
+    }
+
+    // ===== Feature #26: Auto-Refresh Token =====
+    async function autoRefreshToken() {
+        const refreshToken = localStorage.getItem('refresh_token');
+        if (!refreshToken) return logout();
+        try {
+            const res = await fetch('/api/auth/refresh', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ refresh_token: refreshToken })
+            });
+            const data = await res.json();
+            if (data.success) { token = data.token; localStorage.setItem('token', data.token); }
+            else logout();
+        } catch { logout(); }
+    }
+    setInterval(autoRefreshToken, 25 * 60 * 1000);
+
+    // ===== Keyboard Shortcuts =====
+    document.addEventListener('keydown', (e) => {
+        // Ignore if typing in input/textarea
+        if (['INPUT', 'TEXTAREA', 'SELECT'].includes(document.activeElement.tagName)) return;
+        if (e.key === 'Escape') {
+            closePreview();
+            document.getElementById('commentOverlay')?.remove();
+            document.getElementById('shortcutsOverlay')?.remove();
+        }
+        if (e.key === 'Delete' && selectedFileId) deleteFile();
+        if (e.key === '?' || (e.shiftKey && e.key === '/')) showKeyboardShortcuts();
+        if (e.key === 'u' || e.key === 'U') document.getElementById('fileInput').click();
+        if (e.key === 'r' || e.key === 'R') renameFile();
+        if (e.key === 'c' || e.key === 'C') showComments();
+        if (e.key === 'z' || e.key === 'Z') downloadAsZip();
+    });
+
+    // ===== Init =====
+    loadFiles();
+    
+    // Initialize Socket.IO after page load
+    setTimeout(initSocket, 500);
+
+    // PWA
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+    }
+    </script>
+</body>
+</html>

@@ -1,0 +1,325 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowBridge CodeShare - Create & Share Code</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .codeshare-hero {
+            text-align: center;
+            padding: 3rem 1rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border-radius: 16px;
+            margin-bottom: 2rem;
+        }
+        .codeshare-hero h1 {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .codeshare-hero p {
+            font-size: 1.1rem;
+            opacity: 0.9;
+        }
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 1.5rem;
+            margin: 2rem 0;
+        }
+        .feature-card {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 12px;
+            padding: 1.5rem;
+            text-align: center;
+        }
+        .feature-icon {
+            font-size: 2.5rem;
+            margin-bottom: 0.5rem;
+        }
+        .feature-title {
+            font-weight: 600;
+            margin-bottom: 0.5rem;
+        }
+        .feature-desc {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+        }
+    </style>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand" onclick="window.location.href='/dashboard'">🌉 FlowBridge</div>
+        <div class="nav-actions">
+            <a href="/dashboard" class="btn btn-ghost btn-sm">← Dashboard</a>
+        </div>
+    </nav>
+
+    <div style="max-width: 900px; margin: 2rem auto; padding: 0 1rem;">
+        <!-- Hero Section -->
+        <div class="codeshare-hero animate-fade-up">
+            <h1>💻 CodeShare</h1>
+            <p>Real-time collaborative code editing. Share code instantly with anyone, anywhere.</p>
+        </div>
+
+        <!-- Features -->
+        <div class="feature-grid">
+            <div class="feature-card">
+                <div class="feature-icon">🔗</div>
+                <div class="feature-title">Custom URLs</div>
+                <div class="feature-desc">Choose your own memorable link</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">👥</div>
+                <div class="feature-title">Real-time Collaboration</div>
+                <div class="feature-desc">Multiple users editing simultaneously</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🌐</div>
+                <div class="feature-title">Public Access</div>
+                <div class="feature-desc">No login required to view or edit</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">🎨</div>
+                <div class="feature-title">Syntax Highlighting</div>
+                <div class="feature-desc">Support for 20+ languages</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">📜</div>
+                <div class="feature-title">Version History</div>
+                <div class="feature-desc">Track all changes over time</div>
+            </div>
+            <div class="feature-card">
+                <div class="feature-icon">⏱️</div>
+                <div class="feature-title">Auto-Expiry</div>
+                <div class="feature-desc">Set expiration time for links</div>
+            </div>
+        </div>
+
+        <!-- Create Form -->
+        <div class="card">
+            <h2 style="margin-bottom: 1.5rem;">Create New CodeShare</h2>
+
+            <div class="form-group">
+                <label class="form-label">Title</label>
+                <input class="form-input" type="text" id="title" placeholder="My Awesome Code" value="Untitled">
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Language</label>
+                <select class="form-select" id="language">
+                    <option value="python">Python</option>
+                    <option value="javascript">JavaScript</option>
+                    <option value="typescript">TypeScript</option>
+                    <option value="java">Java</option>
+                    <option value="cpp">C++</option>
+                    <option value="c">C</option>
+                    <option value="csharp">C#</option>
+                    <option value="go">Go</option>
+                    <option value="rust">Rust</option>
+                    <option value="php">PHP</option>
+                    <option value="ruby">Ruby</option>
+                    <option value="swift">Swift</option>
+                    <option value="kotlin">Kotlin</option>
+                    <option value="html">HTML</option>
+                    <option value="css">CSS</option>
+                    <option value="sql">SQL</option>
+                    <option value="bash">Bash</option>
+                    <option value="json">JSON</option>
+                    <option value="xml">XML</option>
+                    <option value="yaml">YAML</option>
+                    <option value="markdown">Markdown</option>
+                    <option value="plaintext">Plain Text</option>
+                </select>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Custom URL (optional)</label>
+                <div style="display: flex; align-items: center; gap: 0.5rem;">
+                    <span style="color: var(--text-muted); font-size: 0.9rem;">/code/</span>
+                    <input class="form-input" type="text" id="customSlug" placeholder="my-code-123" style="flex: 1;">
+                </div>
+                <div style="font-size: 0.85rem; color: var(--text-muted); margin-top: 0.25rem;">
+                    Leave empty for random URL. Use letters, numbers, hyphens, underscores.
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label class="form-label">Initial Code (optional)</label>
+                <textarea class="form-input" id="initialCode" rows="10" placeholder="# Write your code here...
+print('Hello, World!')"></textarea>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem;">
+                <div class="form-group" style="margin: 0;">
+                    <label class="form-label">Expiry</label>
+                    <select class="form-select" id="expiry">
+                        <option value="0">Never</option>
+                        <option value="1">1 hour</option>
+                        <option value="24">24 hours</option>
+                        <option value="168">7 days</option>
+                        <option value="720">30 days</option>
+                    </select>
+                </div>
+                <div class="form-group" style="margin: 0;">
+                    <label class="form-label">Permissions</label>
+                    <select class="form-select" id="allowEdit">
+                        <option value="true">Anyone can edit</option>
+                        <option value="false">Read-only</option>
+                    </select>
+                </div>
+            </div>
+
+            <button class="btn btn-primary btn-lg" id="createBtn" onclick="createCodeShare()" style="width: 100%;">
+                🚀 Create CodeShare
+            </button>
+        </div>
+
+        <!-- Result -->
+        <div class="card" id="result" style="display: none; margin-top: 1.5rem;">
+            <h3 style="color: var(--success); margin-bottom: 1rem;">✅ CodeShare Created!</h3>
+            
+            <div class="form-group">
+                <label class="form-label">Share Link</label>
+                <div style="display: flex; gap: 0.5rem;">
+                    <input class="form-input" type="text" id="shareLink" readonly style="flex: 1;">
+                    <button class="btn btn-secondary" onclick="copyLink()">📋 Copy</button>
+                </div>
+            </div>
+
+            <div id="qrSection" style="text-align: center; margin: 1rem 0; display: none;">
+                <label style="display: block; font-size: 0.9rem; color: var(--text-muted); margin-bottom: 0.5rem;">QR Code</label>
+                <img id="qrImage" style="max-width: 200px; border-radius: 8px;">
+            </div>
+
+            <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+                <button class="btn btn-primary" onclick="openCodeShare()" style="flex: 1;">
+                    👁️ Open CodeShare
+                </button>
+                <button class="btn btn-ghost" onclick="createAnother()">
+                    ➕ Create Another
+                </button>
+            </div>
+        </div>
+
+        <!-- How It Works -->
+        <div class="card" style="margin-top: 2rem; background: var(--bg-input);">
+            <h3 style="margin-bottom: 1rem;">📖 How It Works</h3>
+            <div style="line-height: 1.8; color: var(--text-secondary);">
+                <div>1️⃣ <strong>Create</strong> - Set up your code share with custom URL and settings</div>
+                <div>2️⃣ <strong>Share</strong> - Send the link to anyone (no login required)</div>
+                <div>3️⃣ <strong>Collaborate</strong> - Multiple people can edit simultaneously in real-time</div>
+                <div>4️⃣ <strong>Track</strong> - View version history and see who made changes</div>
+                <div>5️⃣ <strong>Download</strong> - Export code as a file anytime</div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        // Toast notification
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const icons = { success: '✓', error: '✗', info: 'ℹ', warning: '⚠' };
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.innerHTML = `
+                <span class="toast-icon">${icons[type] || 'ℹ'}</span>
+                <span class="toast-message">${message}</span>
+                <span class="toast-close" onclick="this.parentElement.remove()">×</span>
+            `;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 5000);
+        }
+
+        let createdSlug = '';
+
+        async function createCodeShare() {
+            const btn = document.getElementById('createBtn');
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner">⟳</span> Creating...';
+
+            const data = {
+                title: document.getElementById('title').value.trim() || 'Untitled',
+                language: document.getElementById('language').value,
+                custom_slug: document.getElementById('customSlug').value.trim() || null,
+                code: document.getElementById('initialCode').value,
+                expiry_hours: parseInt(document.getElementById('expiry').value) || null,
+                allow_edit: document.getElementById('allowEdit').value === 'true',
+                creator_name: 'Anonymous'
+            };
+
+            // Check if user is logged in
+            const token = localStorage.getItem('token');
+            const headers = { 'Content-Type': 'application/json' };
+            if (token) {
+                headers['Authorization'] = 'Bearer ' + token;
+            }
+
+            try {
+                const res = await fetch('/api/codeshare/create', {
+                    method: 'POST',
+                    headers: headers,
+                    body: JSON.stringify(data)
+                });
+
+                const result = await res.json();
+
+                if (result.success) {
+                    createdSlug = result.slug;
+                    document.getElementById('shareLink').value = result.share_url;
+                    
+                    if (result.qr_code) {
+                        document.getElementById('qrImage').src = result.qr_code;
+                        document.getElementById('qrSection').style.display = 'block';
+                    }
+
+                    document.getElementById('result').style.display = 'block';
+                    document.getElementById('result').scrollIntoView({ behavior: 'smooth' });
+                    showToast('CodeShare created successfully!', 'success');
+                } else {
+                    showToast(result.error || 'Failed to create CodeShare', 'error');
+                }
+            } catch (err) {
+                showToast('Connection error. Please try again.', 'error');
+            }
+
+            btn.disabled = false;
+            btn.innerHTML = '🚀 Create CodeShare';
+        }
+
+        function copyLink() {
+            const input = document.getElementById('shareLink');
+            input.select();
+            document.execCommand('copy');
+            showToast('Link copied to clipboard!', 'success');
+        }
+
+        function openCodeShare() {
+            if (createdSlug) {
+                window.open(`/code/${createdSlug}`, '_blank');
+            }
+        }
+
+        function createAnother() {
+            document.getElementById('result').style.display = 'none';
+            document.getElementById('title').value = 'Untitled';
+            document.getElementById('customSlug').value = '';
+            document.getElementById('initialCode').value = '';
+            window.scrollTo({ top: 0, behavior: 'smooth' });
+        }
+
+        // Theme
+        if (localStorage.getItem('theme') === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+        }
+    </script>
+</body>
+</html>

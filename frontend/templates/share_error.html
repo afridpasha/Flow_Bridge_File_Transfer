@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowBridge — Error</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-box animate-fade-up" style="max-width:480px;">
+            <div class="auth-logo" style="font-size:4rem;">⚠️</div>
+            <h1 style="text-align:center;font-size:1.4rem;font-weight:700;color:var(--danger);margin-bottom:0.75rem;">
+                Share Link Error
+            </h1>
+            <p style="text-align:center;color:var(--text-secondary);line-height:1.7;">
+                {{ error }}
+            </p>
+            <p style="text-align:center;color:var(--text-muted);margin-top:1rem;font-size:0.9rem;">
+                Please contact the sender for a new link.
+            </p>
+            <div style="text-align:center;margin-top:1.5rem;">
+                <a href="/" class="btn btn-primary">Go to Home</a>
+            </div>
+        </div>
+    </div>
+    <script>
+        if (localStorage.getItem('theme') === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,27 @@
+name = "flowbridge-lb"
+main = "worker.js"
+compatibility_date = "2024-01-01"
+compatibility_flags = ["nodejs_compat"]
+
+# ── KV Namespace — stores health state, circuit breaker, metrics, rate limits ──
+[[kv_namespaces]]
+binding = "FLOWBRIDGE_KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+
+# ── Cron Trigger — active health checks every 30 seconds ──────────────────────
+[triggers]
+crons = ["*/1 * * * *"]   # every 1 minute (CF minimum; use DO for 30s)
+
+# ── Analytics Engine — request observability ──────────────────────────────────
+[[analytics_engine_datasets]]
+binding = "ANALYTICS"
+dataset = "flowbridge_requests"
+
+# ── Routes — your CF zone routes all API traffic through this worker ───────────
+# Replace YOUR_ZONE_ID and your actual domain
+[[routes]]
+pattern = "api.yourdomain.com/*"
+zone_id = "REPLACE_WITH_YOUR_ZONE_ID"
+
+[vars]
+ENVIRONMENT = "production"

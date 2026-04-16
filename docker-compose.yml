@@ -1,0 +1,50 @@
+version: '3.8'
+
+# Local development MinIO — mirrors OCI production setup.
+# Usage:
+#   docker-compose up -d minio        # start MinIO
+#   docker-compose up -d minio createbuckets  # start + auto-create buckets
+#   docker-compose down               # stop
+
+services:
+
+  minio:
+    image: minio/minio:latest
+    container_name: flowbridge-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: flowbridge_admin
+      MINIO_ROOT_PASSWORD: flowbridge_secret_change_me
+    ports:
+      - "9000:9000"   # S3 API  → matches MINIO_ENDPOINT_URL in .env
+      - "9001:9001"   # Console → open http://localhost:9001 in browser
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+    restart: unless-stopped
+
+  # One-shot container that creates the required buckets on first run
+  createbuckets:
+    image: minio/mc:latest
+    container_name: flowbridge-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      /bin/sh -c "
+        mc alias set local http://minio:9000 flowbridge_admin flowbridge_secret_change_me &&
+        mc mb --ignore-existing local/flowbridge-files &&
+        mc mb --ignore-existing local/flowbridge-thumbs &&
+        mc mb --ignore-existing local/flowbridge-zips &&
+        mc ilm add --expiry-days 1 local/flowbridge-zips &&
+        echo 'Buckets ready.'
+      "
+    restart: on-failure
+
+volumes:
+  minio_data:
+    driver: local

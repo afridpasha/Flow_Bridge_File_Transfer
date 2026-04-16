@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowBridge — Settings</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#6C63FF">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand" style="cursor:pointer;" onclick="window.location.href='/dashboard'">🌉 FlowBridge</div>
+        <div class="nav-actions">
+            <span class="nav-user" id="navUser"></span>
+            <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn" title="Toggle theme">🌙</button>
+            <a href="/dashboard" class="btn btn-ghost btn-sm">← Dashboard</a>
+        </div>
+    </nav>
+
+    <div style="max-width:700px;margin:2rem auto;padding:0 1rem;">
+        <h1 style="font-size:1.5rem;font-weight:700;margin-bottom:1.5rem;">⚙️ Settings</h1>
+
+        <!-- 2FA Section -->
+        <div class="card animate-fade-up" style="margin-bottom:1.5rem;">
+            <div class="section-title">🛡️ Two-Factor Authentication (2FA)</div>
+            <p style="color:var(--text-secondary);font-size:0.9rem;margin:0.5rem 0 1rem;">
+                Add an extra layer of security. You'll need an authenticator app (Google Authenticator, Authy, etc.) to log in.
+            </p>
+
+            <div id="2faStatus">
+                <div class="alert alert-info">Loading 2FA status...</div>
+            </div>
+
+            <!-- Setup Step 1: Show QR -->
+            <div id="2faSetup" style="display:none;">
+                <div style="text-align:center;margin:1rem 0;">
+                    <p style="font-weight:600;margin-bottom:0.5rem;">Scan this QR code with your authenticator app:</p>
+                    <img id="qrCodeImg" alt="2FA QR Code" style="max-width:250px;border-radius:12px;margin:1rem auto;display:block;background:white;padding:8px;">
+                    <div style="margin:0.75rem 0;">
+                        <p style="color:var(--text-muted);font-size:0.8rem;">Or enter this secret manually:</p>
+                        <code id="totpSecret" style="font-family:var(--font-mono);color:var(--primary);font-size:0.9rem;user-select:all;">-</code>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Enter 6-digit code from your app:</label>
+                    <input class="form-input" type="text" id="verifyCode" maxlength="6" placeholder="000000"
+                           style="font-family:var(--font-mono);font-size:1.3rem;letter-spacing:0.3em;text-align:center;">
+                </div>
+                <button class="btn btn-primary" onclick="verify2FA()" id="verifyBtn">✓ Verify & Enable 2FA</button>
+            </div>
+
+            <!-- Disable 2FA -->
+            <div id="2faDisable" style="display:none;">
+                <div class="alert alert-success" style="margin-bottom:1rem;">
+                    ✅ 2FA is <strong>enabled</strong>. Your account is protected.
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Enter current 2FA code to disable:</label>
+                    <input class="form-input" type="text" id="disableCode" maxlength="6" placeholder="000000"
+                           style="font-family:var(--font-mono);font-size:1.3rem;letter-spacing:0.3em;text-align:center;">
+                </div>
+                <button class="btn btn-danger" onclick="disable2FA()">🔓 Disable 2FA</button>
+            </div>
+        </div>
+
+        <!-- Account Info -->
+        <div class="card animate-fade-up" style="margin-bottom:1.5rem;">
+            <div class="section-title">👤 Account</div>
+            <div style="display:grid;grid-template-columns:120px 1fr;gap:0.5rem;font-size:0.9rem;">
+                <span style="color:var(--text-muted);">Username:</span>
+                <span id="accountUser">-</span>
+                <span style="color:var(--text-muted);">Email:</span>
+                <span id="accountEmail">-</span>
+                <span style="color:var(--text-muted);">Storage:</span>
+                <span id="accountStorage">-</span>
+            </div>
+        </div>
+
+        <!-- About -->
+        <div class="card animate-fade-up">
+            <div class="section-title">ℹ️ About FlowBridge</div>
+            <div style="font-size:0.9rem;color:var(--text-secondary);line-height:1.8;">
+                <div><strong>Version:</strong> 3.0.0</div>
+                <div><strong>Features:</strong> E2E Encryption, 2FA, Room Transfer, PWA, Email Notifications</div>
+                <div><strong>API Docs:</strong> <a href="/api/docs" style="color:var(--primary);">/api/docs</a></div>
+            </div>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+    const token = localStorage.getItem('token');
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (!token) window.location.href = '/login';
+    document.getElementById('navUser').textContent = user.username || '';
+    document.getElementById('accountUser').textContent = user.username || '-';
+    document.getElementById('accountEmail').textContent = user.email || '-';
+
+    // Theme
+    function toggleTheme() {
+        const c = document.documentElement.getAttribute('data-theme');
+        if (c === 'light') { document.documentElement.removeAttribute('data-theme'); localStorage.setItem('theme','dark'); document.getElementById('themeBtn').textContent='🌙'; }
+        else { document.documentElement.setAttribute('data-theme','light'); localStorage.setItem('theme','light'); document.getElementById('themeBtn').textContent='☀️'; }
+    }
+    if (localStorage.getItem('theme')==='light') { document.documentElement.setAttribute('data-theme','light'); document.getElementById('themeBtn').textContent='☀️'; }
+
+    function showToast(msg, type='info') {
+        const c=document.getElementById('toastContainer'); const icons={success:'✓',error:'✗',info:'ℹ',warning:'⚠'};
+        const t=document.createElement('div'); t.className=`toast toast-${type}`;
+        t.innerHTML=`<span class="toast-icon">${icons[type]||'ℹ'}</span><span class="toast-message">${msg}</span><span class="toast-close" onclick="this.parentElement.remove()">×</span>`;
+        c.appendChild(t); setTimeout(()=>t.remove(),5000);
+    }
+
+    // Load 2FA status
+    async function load2FAStatus() {
+        try {
+            const res = await fetch('/api/auth/2fa/status', { headers: { 'Authorization': 'Bearer ' + token } });
+            const data = await res.json();
+            if (data.enabled) {
+                document.getElementById('2faStatus').style.display = 'none';
+                document.getElementById('2faDisable').style.display = 'block';
+            } else {
+                document.getElementById('2faStatus').innerHTML = `
+                    <div class="alert alert-warning" style="margin-bottom:1rem;">⚠️ 2FA is <strong>not enabled</strong>.</div>
+                    <button class="btn btn-primary" onclick="setup2FA()">🛡️ Set Up 2FA</button>`;
+            }
+        } catch { document.getElementById('2faStatus').innerHTML = '<div class="alert alert-danger">Failed to load status</div>'; }
+    }
+
+    // Setup
+    async function setup2FA() {
+        try {
+            const res = await fetch('/api/auth/2fa/setup', { method: 'POST', headers: { 'Authorization': 'Bearer ' + token } });
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('qrCodeImg').src = data.qr_code;
+                document.getElementById('totpSecret').textContent = data.secret;
+                document.getElementById('2faStatus').style.display = 'none';
+                document.getElementById('2faSetup').style.display = 'block';
+            } else { showToast(data.error, 'error'); }
+        } catch { showToast('Setup failed', 'error'); }
+    }
+
+    // Verify
+    async function verify2FA() {
+        const code = document.getElementById('verifyCode').value.trim();
+        if (code.length !== 6) return showToast('Enter 6-digit code', 'warning');
+        try {
+            const res = await fetch('/api/auth/2fa/verify-setup', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ code })
+            });
+            const data = await res.json();
+            if (data.success) {
+                showToast('2FA enabled!', 'success');
+                document.getElementById('2faSetup').style.display = 'none';
+                document.getElementById('2faDisable').style.display = 'block';
+            } else { showToast(data.error, 'error'); }
+        } catch { showToast('Verification failed', 'error'); }
+    }
+
+    // Disable
+    async function disable2FA() {
+        const code = document.getElementById('disableCode').value.trim();
+        if (code.length !== 6) return showToast('Enter 6-digit code', 'warning');
+        if (!confirm('Are you sure you want to disable 2FA?')) return;
+        try {
+            const res = await fetch('/api/auth/2fa/disable', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
+                body: JSON.stringify({ code })
+            });
+            const data = await res.json();
+            if (data.success) { showToast('2FA disabled', 'success'); location.reload(); }
+            else { showToast(data.error, 'error'); }
+        } catch { showToast('Failed', 'error'); }
+    }
+
+    // Load storage info
+    async function loadAccount() {
+        try {
+            const res = await fetch('/api/user/files', { headers: { 'Authorization': 'Bearer ' + token } });
+            const data = await res.json();
+            if (data.success) {
+                document.getElementById('accountStorage').textContent = `${data.storage_used_formatted} / ${data.storage_quota_formatted}`;
+            }
+        } catch {}
+    }
+
+    load2FAStatus();
+    loadAccount();
+    </script>
+</body>
+</html>

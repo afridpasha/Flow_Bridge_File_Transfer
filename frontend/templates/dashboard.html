@@ -1,0 +1,284 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowBridge — Dashboard</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#6C63FF">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar" role="navigation" aria-label="Main navigation">
+        <div class="nav-brand">
+            <img src="/static/favicon.svg" alt="FlowBridge Logo" style="width: 28px; height: 28px; margin-right: 8px; vertical-align: middle;">
+            FlowBridge
+        </div>
+        <div class="nav-actions">
+            <a href="/codeshare" class="btn btn-ghost btn-sm hidden sm:inline-flex" title="CodeShare" aria-label="CodeShare" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none;">💻 Code</a>
+            <a href="/activity" class="btn btn-ghost btn-sm" title="Activity feed" aria-label="Activity feed">📋</a>
+            <a href="/settings" class="btn btn-ghost btn-sm" title="Settings" aria-label="Settings">⚙️</a>
+            <span class="nav-user hidden md:inline" id="navUser"></span>
+            <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">🌙</button>
+            <button class="btn btn-danger btn-sm" onclick="logout()" aria-label="Log out">Logout</button>
+        </div>
+    </nav>
+
+    <div class="dashboard-container animate-fade-up">
+        <!-- Welcome Banner -->
+        <div class="welcome-banner">
+            <h1 id="welcomeText" class="text-xl sm:text-2xl">Welcome back! 👋</h1>
+            <p class="text-sm sm:text-base">Choose your transfer mode to get started. Send files securely anywhere.</p>
+        </div>
+
+        <!-- Storage Stats -->
+        <div class="stats-row">
+            <div class="stat-card">
+                <div class="stat-icon">📁</div>
+                <div class="stat-value" id="fileCount">-</div>
+                <div class="stat-label">Total Files</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">💾</div>
+                <div class="stat-value" id="storageUsed">-</div>
+                <div class="stat-label">Storage Used</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">🔗</div>
+                <div class="stat-value" id="activeShares">-</div>
+                <div class="stat-label">Active Shares</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-icon">📊</div>
+                <div class="stat-value" id="transferCount">-</div>
+                <div class="stat-label">Transfers</div>
+            </div>
+        </div>
+
+        <!-- Storage Bar -->
+        <div class="card" style="margin-bottom:1.5rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:0.5rem;">
+                <span style="font-weight:600;font-size:0.9rem;">Storage Usage</span>
+                <span id="storagePercent" style="font-size:0.85rem;color:var(--text-muted);">-</span>
+            </div>
+            <div class="storage-bar">
+                <div class="storage-track">
+                    <div class="storage-fill" id="storageFill" style="width:0%"></div>
+                </div>
+                <div class="storage-text">
+                    <span id="storageDetail">Loading...</span>
+                    <span id="storageQuota">-</span>
+                </div>
+            </div>
+        </div>
+
+        <!-- Transfer Mode Cards -->
+        <h2 style="font-size:1.2rem;font-weight:700;margin-bottom:1rem;">Choose What To Do</h2>
+        <div class="mode-cards" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr));">
+            <div class="mode-card" onclick="selectMode('send')">
+                <div class="mode-icon">📤</div>
+                <div class="mode-title">Send / Upload</div>
+                <div class="mode-desc text-sm">
+                    Upload files, generate share links with OTP & QR code,
+                    or send directly to a receiver using a room code.
+                </div>
+            </div>
+
+            <div class="mode-card" onclick="selectMode('receive')">
+                <div class="mode-icon">📥</div>
+                <div class="mode-title">Receive Files</div>
+                <div class="mode-desc text-sm">
+                    Get a 6-digit room code and share it with the sender.
+                    No VPN, no IP address needed — works across any network!
+                </div>
+            </div>
+
+            <div class="mode-card" onclick="selectMode('manage')">
+                <div class="mode-icon">📁</div>
+                <div class="mode-title">Manage Files</div>
+                <div class="mode-desc text-sm">
+                    Browse your files, create folders, search, preview,
+                    manage active share links and download analytics.
+                </div>
+            </div>
+
+            <div class="mode-card" onclick="window.location.href='/codeshare'" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border: none;">
+                <div class="mode-icon">💻</div>
+                <div class="mode-title" style="color: white;">CodeShare</div>
+                <div class="mode-desc text-sm" style="color: rgba(255,255,255,0.9);">
+                    Real-time collaborative code editing. Share code with anyone,
+                    anywhere. No login required!
+                </div>
+            </div>
+
+            <div class="mode-card" onclick="window.location.href='/webrtc'" style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); color: white; border: none;">
+                <div class="mode-icon">🌐</div>
+                <div class="mode-title" style="color: white;">WebRTC P2P</div>
+                <div class="mode-desc text-sm" style="color: rgba(255,255,255,0.9);">
+                    Direct browser-to-browser file transfer. 10x faster,
+                    zero server bandwidth. Perfect for large files!
+                </div>
+            </div>
+
+            <div class="mode-card" onclick="window.location.href='/monitor'" style="background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%); color: white; border: none;">
+                <div class="mode-icon">📊</div>
+                <div class="mode-title" style="color: white;">Monitor</div>
+                <div class="mode-desc text-sm" style="color: rgba(255,255,255,0.9);">
+                    Real-time server monitoring. View auto-scaling,
+                    load balancing, and system metrics.
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+        // ===== Auth Check =====
+        const token = localStorage.getItem('token');
+        const user = JSON.parse(localStorage.getItem('user') || '{}');
+
+        if (!token) window.location.href = '/login';
+
+        document.getElementById('navUser').textContent = user.username || 'User';
+        document.getElementById('welcomeText').textContent = `Welcome back, ${user.username || 'User'}! 👋`;
+
+        // ===== Theme Management =====
+        function toggleTheme() {
+            const current = document.documentElement.getAttribute('data-theme');
+            const next = current === 'light' ? null : 'light';
+            if (next) {
+                document.documentElement.setAttribute('data-theme', 'light');
+                localStorage.setItem('theme', 'light');
+                document.getElementById('themeBtn').textContent = '☀️';
+            } else {
+                document.documentElement.removeAttribute('data-theme');
+                localStorage.setItem('theme', 'dark');
+                document.getElementById('themeBtn').textContent = '🌙';
+            }
+        }
+
+        // Load saved theme
+        const savedTheme = localStorage.getItem('theme');
+        if (savedTheme === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+            document.getElementById('themeBtn').textContent = '☀️';
+        }
+
+        // ===== Load Dashboard Data =====
+        async function loadDashboard() {
+            try {
+                // Load user files
+                const filesRes = await fetch('/api/user/files', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                const filesData = await filesRes.json();
+
+                if (filesData.success) {
+                    document.getElementById('fileCount').textContent = filesData.count;
+                    document.getElementById('storageUsed').textContent = filesData.storage_used_formatted;
+
+                    const used = filesData.storage_used;
+                    const quota = filesData.storage_quota;
+                    const percent = quota > 0 ? Math.round((used / quota) * 100) : 0;
+
+                    document.getElementById('storageFill').style.width = percent + '%';
+                    document.getElementById('storagePercent').textContent = percent + '%';
+                    document.getElementById('storageDetail').textContent = filesData.storage_used_formatted;
+                    document.getElementById('storageQuota').textContent = filesData.storage_quota_formatted;
+                }
+
+                // Load active shares
+                const sharesRes = await fetch('/api/share/active', {
+                    headers: { 'Authorization': 'Bearer ' + token }
+                });
+                const sharesData = await sharesRes.json();
+                if (sharesData.success) {
+                    document.getElementById('activeShares').textContent = sharesData.count;
+                }
+
+                // Load transfer history
+                const transfersRes = await fetch('/api/transfers/history');
+                const transfersData = await transfersRes.json();
+                if (transfersData.success) {
+                    document.getElementById('transferCount').textContent = transfersData.count;
+                }
+
+            } catch (error) {
+                console.error('Dashboard load error:', error);
+            }
+        }
+
+        // ===== Toast Notification =====
+        function showToast(message, type = 'info') {
+            const container = document.getElementById('toastContainer');
+            const icons = { success: '✓', error: '✗', info: 'ℹ', warning: '⚠' };
+            const toast = document.createElement('div');
+            toast.className = `toast toast-${type}`;
+            toast.innerHTML = `
+                <span class="toast-icon">${icons[type] || 'ℹ'}</span>
+                <span class="toast-message">${message}</span>
+                <span class="toast-close" onclick="this.parentElement.remove()">×</span>
+            `;
+            container.appendChild(toast);
+            setTimeout(() => toast.remove(), 5000);
+        }
+
+        // ===== Navigation =====
+        function selectMode(mode) {
+            localStorage.setItem('transferMode', mode);
+            if (mode === 'receive') {
+                window.location.href = '/receive';
+            } else {
+                window.location.href = '/transfer-mode';
+            }
+        }
+
+        function logout() {
+            localStorage.removeItem('token');
+            localStorage.removeItem('refresh_token');
+            localStorage.removeItem('user');
+            localStorage.removeItem('transferMode');
+            window.location.href = '/login';
+        }
+
+        // ===== Feature #26: Auto-Refresh Token =====
+        async function autoRefreshToken() {
+            const refreshToken = localStorage.getItem('refresh_token');
+            if (!refreshToken) return logout();
+            try {
+                const res = await fetch('/api/auth/refresh', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ refresh_token: refreshToken })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    localStorage.setItem('token', data.token);
+                } else { logout(); }
+            } catch { logout(); }
+        }
+
+        // ===== Verify Token =====
+        fetch('/api/auth/verify', {
+            headers: { 'Authorization': 'Bearer ' + token }
+        }).then(res => res.json()).then(data => {
+            if (!data.success) autoRefreshToken().then(() => loadDashboard());
+            else loadDashboard();
+        }).catch(() => logout());
+
+        // Auto refresh every 25 minutes
+        setInterval(autoRefreshToken, 25 * 60 * 1000);
+
+        // PWA
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/static/sw.js').catch(() => {});
+        }
+    </script>
+</body>
+</html>
+

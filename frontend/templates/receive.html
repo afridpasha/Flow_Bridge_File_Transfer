@@ -1,0 +1,298 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowBridge — Receive Files</title>
+    <meta name="description" content="Receive files instantly with a room code. No VPN, no IP address needed.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+</head>
+<body>
+    <nav class="navbar">
+        <div class="nav-brand" style="cursor:pointer;" onclick="window.location.href='/dashboard'">🌉 FlowBridge</div>
+        <div class="nav-actions">
+            <span class="nav-user" id="navUser"></span>
+            <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn" title="Toggle theme">🌙</button>
+            <a href="/dashboard" class="btn btn-ghost btn-sm">← Dashboard</a>
+        </div>
+    </nav>
+
+    <div style="max-width:600px;margin:2rem auto;padding:0 1rem;">
+
+        <!-- Step 1: Create Room -->
+        <div class="card animate-fade-up" id="step1">
+            <div style="text-align:center;">
+                <div style="font-size:3rem;margin-bottom:0.5rem;">📥</div>
+                <h1 style="font-size:1.5rem;font-weight:700;margin-bottom:0.5rem;">Receive Files</h1>
+                <p style="color:var(--text-secondary);margin-bottom:1.5rem;line-height:1.6;">
+                    Create a room and share the code with the sender. Files transfer through the server — <strong>no VPN, no IP address, no port forwarding needed</strong>.
+                </p>
+                <button class="btn btn-primary btn-lg" id="createRoomBtn" onclick="createRoom()" style="width:100%;">
+                    🚀 Create Room & Get Code
+                </button>
+            </div>
+        </div>
+
+        <!-- Step 2: Waiting for Sender -->
+        <div class="card animate-fade-up" id="step2" style="display:none;">
+            <div style="text-align:center;">
+                <div style="font-size:1rem;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.1em;font-weight:600;margin-bottom:0.5rem;">
+                    Your Room Code
+                </div>
+                <div id="roomCodeDisplay" style="font-family:'JetBrains Mono',monospace;font-size:3rem;font-weight:700;letter-spacing:0.4em;color:var(--primary);margin:1rem 0;user-select:all;">
+                    ------
+                </div>
+                <p style="color:var(--text-secondary);margin-bottom:1rem;">
+                    Share this code with the sender. They enter it on their Transfer page.
+                </p>
+                <button class="btn btn-secondary btn-sm" onclick="copyRoomCode()">📋 Copy Code</button>
+
+                <div class="alert alert-info" style="margin-top:1.5rem;" id="waitingStatus">
+                    <span class="spinner">⟳</span> Waiting for sender to connect...
+                </div>
+            </div>
+        </div>
+
+        <!-- Step 3: Connected & Receiving -->
+        <div class="card animate-fade-up" id="step3" style="display:none;">
+            <div style="text-align:center;">
+                <div style="font-size:2rem;margin-bottom:0.5rem;">🤝</div>
+                <h2 style="font-size:1.2rem;font-weight:600;color:var(--success);" id="connectedMsg">Sender connected!</h2>
+                <p style="color:var(--text-secondary);" id="senderName">-</p>
+            </div>
+
+            <!-- Incoming File -->
+            <div id="incomingFile" style="display:none;margin-top:1.5rem;">
+                <div class="card" style="background:var(--bg-input);">
+                    <div style="display:flex;align-items:center;gap:0.75rem;margin-bottom:1rem;">
+                        <span style="font-size:2rem;" id="fileIcon">📄</span>
+                        <div>
+                            <div style="font-weight:600;" id="incomingFileName">-</div>
+                            <div style="color:var(--text-muted);font-size:0.85rem;" id="incomingFileMeta">-</div>
+                        </div>
+                    </div>
+
+                    <!-- Progress -->
+                    <div class="progress-bar-bg" style="height:8px;margin-bottom:0.5rem;">
+                        <div class="progress-bar-fill" id="receiveProgress" style="width:0%;transition:width 0.3s;"></div>
+                    </div>
+                    <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:var(--text-muted);">
+                        <span id="progressText">0%</span>
+                        <span id="chunkText">0 / 0 chunks</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Completed Files -->
+            <div id="completedFiles" style="margin-top:1rem;"></div>
+        </div>
+
+        <!-- How It Works -->
+        <div class="card" style="margin-top:1.5rem;opacity:0.8;">
+            <div style="font-weight:600;margin-bottom:0.75rem;">How Mode 1 Works (Room Code Transfer)</div>
+            <div style="font-size:0.9rem;color:var(--text-secondary);line-height:1.8;">
+                <div>1️⃣ You click "Create Room" and get a <strong>6-character code</strong></div>
+                <div>2️⃣ Share the code with the sender (via text, call, etc.)</div>
+                <div>3️⃣ Sender enters the code on their Transfer page</div>
+                <div>4️⃣ File transfers through the server — <strong>works across any network!</strong></div>
+                <div style="margin-top:0.5rem;color:var(--text-muted);font-size:0.8rem;">
+                    ✅ No VPN needed &nbsp; ✅ No ZeroTier needed &nbsp; ✅ No IP address needed &nbsp; ✅ No port forwarding
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+    // ===== Auth =====
+    const token = localStorage.getItem('token');
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    document.getElementById('navUser').textContent = user.username || '';
+
+    // ===== Theme =====
+    function toggleTheme() {
+        const c = document.documentElement.getAttribute('data-theme');
+        if (c === 'light') {
+            document.documentElement.removeAttribute('data-theme');
+            localStorage.setItem('theme', 'dark');
+            document.getElementById('themeBtn').textContent = '🌙';
+        } else {
+            document.documentElement.setAttribute('data-theme', 'light');
+            localStorage.setItem('theme', 'light');
+            document.getElementById('themeBtn').textContent = '☀️';
+        }
+    }
+    if (localStorage.getItem('theme') === 'light') {
+        document.documentElement.setAttribute('data-theme', 'light');
+        document.getElementById('themeBtn').textContent = '☀️';
+    }
+
+    // ===== Toast =====
+    function showToast(message, type = 'info') {
+        const c = document.getElementById('toastContainer');
+        const icons = { success: '✓', error: '✗', info: 'ℹ', warning: '⚠' };
+        const t = document.createElement('div');
+        t.className = `toast toast-${type}`;
+        t.innerHTML = `<span class="toast-icon">${icons[type]||'ℹ'}</span><span class="toast-message">${message}</span><span class="toast-close" onclick="this.parentElement.remove()">×</span>`;
+        c.appendChild(t);
+        setTimeout(() => t.remove(), 5000);
+    }
+
+    function formatSize(bytes) {
+        for (const unit of ['B', 'KB', 'MB', 'GB']) {
+            if (bytes < 1024) return bytes.toFixed(1) + ' ' + unit;
+            bytes /= 1024;
+        }
+        return bytes.toFixed(1) + ' TB';
+    }
+
+    // ===== SocketIO =====
+    const socket = io();
+    let currentRoomCode = null;
+    let receivedChunks = [];
+    let currentFileMeta = null;
+    let completedCount = 0;
+
+    // Create room
+    function createRoom() {
+        document.getElementById('createRoomBtn').disabled = true;
+        document.getElementById('createRoomBtn').innerHTML = '<span class="spinner">⟳</span> Creating...';
+        socket.emit('create_room', { username: user.username || 'Anonymous' });
+    }
+
+    // Room created
+    socket.on('room_created', (data) => {
+        currentRoomCode = data.room_code;
+        document.getElementById('roomCodeDisplay').textContent = data.room_code;
+        document.getElementById('step1').style.display = 'none';
+        document.getElementById('step2').style.display = 'block';
+        showToast('Room created! Share the code with the sender.', 'success');
+    });
+
+    // Sender connected
+    socket.on('sender_connected', (data) => {
+        document.getElementById('step2').style.display = 'none';
+        document.getElementById('step3').style.display = 'block';
+        document.getElementById('senderName').textContent = `Connected with: ${data.sender}`;
+        showToast(`${data.sender} connected!`, 'success');
+    });
+
+    // Incoming file notification
+    socket.on('incoming_file', (data) => {
+        currentFileMeta = data;
+        receivedChunks = new Array(data.total_chunks);
+
+        document.getElementById('incomingFile').style.display = 'block';
+        document.getElementById('incomingFileName').textContent = data.filename;
+        document.getElementById('incomingFileMeta').textContent = formatSize(data.file_size) + ' • ' + data.total_chunks + ' chunks';
+        document.getElementById('receiveProgress').style.width = '0%';
+        document.getElementById('progressText').textContent = '0%';
+        document.getElementById('chunkText').textContent = `0 / ${data.total_chunks} chunks`;
+    });
+
+    // Receive file chunk
+    socket.on('receive_file_chunk', (data) => {
+        const { chunk, chunk_index, total_chunks, filename } = data;
+
+        // Store chunk (Base64 string)
+        receivedChunks[chunk_index] = chunk;
+
+        // Update progress
+        const received = receivedChunks.filter(c => c !== undefined).length;
+        const pct = Math.round((received / total_chunks) * 100);
+        document.getElementById('receiveProgress').style.width = pct + '%';
+        document.getElementById('progressText').textContent = pct + '%';
+        document.getElementById('chunkText').textContent = `${received} / ${total_chunks} chunks`;
+    });
+
+    // Transfer complete
+    socket.on('transfer_complete', (data) => {
+        if (!data.success) {
+            showToast('Transfer failed: ' + (data.error || 'Unknown error'), 'error');
+            return;
+        }
+
+        // Reassemble file from chunks
+        try {
+            const allChunksReady = receivedChunks.every(c => c !== undefined);
+            if (allChunksReady && currentFileMeta) {
+                const binaryStr = receivedChunks.join('');
+                const byteArray = Uint8Array.from(atob(binaryStr), c => c.charCodeAt(0));
+                const blob = new Blob([byteArray]);
+
+                // Auto-download
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = currentFileMeta.filename;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+
+                completedCount++;
+
+                // Add to completed list
+                const div = document.getElementById('completedFiles');
+                div.innerHTML += `
+                    <div class="alert alert-success" style="margin-bottom:0.5rem;">
+                        ✅ <strong>${currentFileMeta.filename}</strong>
+                        <span style="color:var(--text-muted);margin-left:0.5rem;">${formatSize(currentFileMeta.file_size)}</span>
+                        — Downloaded!
+                    </div>`;
+
+                showToast(`Received: ${currentFileMeta.filename}`, 'success');
+            }
+        } catch (err) {
+            console.error('File reassembly error:', err);
+            showToast('Error saving file', 'error');
+        }
+
+        // Reset for next file
+        receivedChunks = [];
+        currentFileMeta = null;
+        document.getElementById('incomingFile').style.display = 'none';
+    });
+
+    // Peer disconnected
+    socket.on('peer_disconnected', () => {
+        showToast('Peer disconnected', 'warning');
+    });
+
+    // Transfer cancelled
+    socket.on('transfer_cancelled', () => {
+        showToast('Transfer cancelled by sender', 'warning');
+        receivedChunks = [];
+        currentFileMeta = null;
+        document.getElementById('incomingFile').style.display = 'none';
+    });
+
+    // Errors
+    socket.on('room_error', (data) => {
+        showToast(data.error, 'error');
+    });
+
+    // Copy room code
+    async function copyRoomCode() {
+        try {
+            await navigator.clipboard.writeText(currentRoomCode);
+            showToast('Code copied!', 'success');
+        } catch {
+            showToast(currentRoomCode, 'info');
+        }
+    }
+
+    // Cleanup on page close
+    window.addEventListener('beforeunload', () => {
+        if (currentRoomCode) {
+            socket.emit('leave_transfer_room', { room_code: currentRoomCode });
+        }
+    });
+    </script>
+</body>
+</html>

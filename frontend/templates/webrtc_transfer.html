@@ -1,0 +1,1009 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>WebRTC P2P Transfer - FlowBridge</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        .webrtc-container {
+            max-width: 1200px;
+            margin: 20px auto;
+            padding: 15px;
+        }
+
+        @media (min-width: 640px) {
+            .webrtc-container {
+                margin: 30px auto;
+                padding: 20px;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .webrtc-container {
+                margin: 40px auto;
+            }
+        }
+
+        .back-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 10px 20px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-primary);
+            text-decoration: none;
+            font-weight: 500;
+            transition: all 0.3s;
+            margin-bottom: 20px;
+        }
+
+        .back-btn:hover {
+            background: var(--primary);
+            color: white;
+            border-color: var(--primary);
+            transform: translateX(-4px);
+        }
+
+        .mode-selector {
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+            margin-bottom: 25px;
+            justify-content: center;
+        }
+
+        @media (min-width: 640px) {
+            .mode-selector {
+                flex-direction: row;
+                gap: 20px;
+                margin-bottom: 30px;
+            }
+        }
+
+        .mode-btn {
+            padding: 12px 30px;
+            font-size: 16px;
+            border: 2px solid #4CAF50;
+            background: white;
+            color: #4CAF50;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+        }
+
+        @media (min-width: 640px) {
+            .mode-btn {
+                padding: 15px 40px;
+                font-size: 18px;
+                width: auto;
+            }
+        }
+
+        .mode-btn.active {
+            background: #4CAF50;
+            color: white;
+        }
+
+        .mode-btn:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(76, 175, 80, 0.3);
+        }
+
+        .transfer-section {
+            display: none;
+            background: white;
+            padding: 20px;
+            border-radius: 12px;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+        }
+
+        @media (min-width: 640px) {
+            .transfer-section {
+                padding: 25px;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .transfer-section {
+                padding: 30px;
+            }
+        }
+
+        .transfer-section.active {
+            display: block;
+        }
+
+        .peer-id-display {
+            background: #f5f5f5;
+            padding: 20px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+        }
+
+        .peer-id-code {
+            font-size: 20px;
+            font-weight: bold;
+            color: #4CAF50;
+            letter-spacing: 2px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            padding: 12px;
+            background: white;
+            border: 3px dashed #4CAF50;
+            border-radius: 8px;
+            user-select: all;
+            cursor: pointer;
+            word-break: break-all;
+        }
+
+        @media (min-width: 640px) {
+            .peer-id-code {
+                font-size: 24px;
+                letter-spacing: 2.5px;
+                padding: 15px;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .peer-id-code {
+                font-size: 28px;
+                letter-spacing: 3px;
+            }
+        }
+
+        .peer-id-code:hover {
+            background: #f0f8f0;
+            border-color: #45a049;
+        }
+
+        .connection-status {
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+            text-align: center;
+            font-weight: bold;
+        }
+
+        .status-disconnected {
+            background: #ffebee;
+            color: #c62828;
+        }
+
+        .status-connecting {
+            background: #fff3e0;
+            color: #ef6c00;
+        }
+
+        .status-connected {
+            background: #e8f5e9;
+            color: #2e7d32;
+        }
+
+        .file-drop-zone {
+            border: 3px dashed #4CAF50;
+            border-radius: 12px;
+            padding: 40px 15px;
+            text-align: center;
+            margin: 20px 0;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        @media (min-width: 640px) {
+            .file-drop-zone {
+                padding: 50px 20px;
+            }
+        }
+
+        @media (min-width: 1024px) {
+            .file-drop-zone {
+                padding: 60px 20px;
+            }
+        }
+
+        .file-drop-zone:hover {
+            background: #f1f8f4;
+            border-color: #45a049;
+        }
+
+        .file-drop-zone.drag-over {
+            background: #e8f5e9;
+            border-color: #2e7d32;
+        }
+
+        .progress-container {
+            display: none;
+            margin: 20px 0;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 30px;
+            background: #f0f0f0;
+            border-radius: 15px;
+            overflow: hidden;
+            position: relative;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #4CAF50, #45a049);
+            width: 0%;
+            transition: width 0.3s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: bold;
+        }
+
+        .transfer-info {
+            display: grid;
+            grid-template-columns: 1fr;
+            gap: 12px;
+            margin: 20px 0;
+        }
+
+        @media (min-width: 480px) {
+            .transfer-info {
+                grid-template-columns: repeat(2, 1fr);
+            }
+        }
+
+        @media (min-width: 768px) {
+            .transfer-info {
+                grid-template-columns: repeat(4, 1fr);
+                gap: 15px;
+            }
+        }
+
+        .info-card {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .info-label {
+            font-size: 12px;
+            color: #666;
+            margin-bottom: 5px;
+        }
+
+        .info-value {
+            font-size: 20px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .btn-primary {
+            background: #4CAF50;
+            color: white;
+            padding: 10px 25px;
+            border: none;
+            border-radius: 8px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.3s;
+            width: 100%;
+        }
+
+        @media (min-width: 640px) {
+            .btn-primary {
+                padding: 12px 30px;
+                font-size: 16px;
+                width: auto;
+            }
+        }
+
+        .btn-primary:hover {
+            background: #45a049;
+            transform: translateY(-2px);
+        }
+
+        .btn-primary:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            transform: none;
+        }
+
+        .input-group {
+            margin: 20px 0;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: bold;
+            color: #333;
+        }
+
+        .input-group input {
+            width: 100%;
+            padding: 10px;
+            border: 2px solid #ddd;
+            border-radius: 8px;
+            font-size: 14px;
+            font-family: monospace;
+        }
+
+        @media (min-width: 640px) {
+            .input-group input {
+                padding: 12px;
+                font-size: 16px;
+            }
+        }
+
+        .advantages-list {
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            padding: 15px;
+            border-radius: 8px;
+            margin: 20px 0;
+        }
+
+        @media (min-width: 640px) {
+            .advantages-list {
+                padding: 20px;
+            }
+        }
+
+        .advantages-list h3 {
+            color: var(--primary);
+            margin-bottom: 12px;
+            font-size: 1.1rem;
+        }
+
+        @media (min-width: 640px) {
+            .advantages-list h3 {
+                margin-bottom: 15px;
+                font-size: 1.2rem;
+            }
+        }
+
+        .advantages-list ul {
+            list-style: none;
+            padding: 0;
+        }
+
+        .advantages-list li {
+            padding: 6px 0;
+            padding-left: 25px;
+            position: relative;
+            color: var(--text-primary);
+            font-size: 0.9rem;
+        }
+
+        @media (min-width: 640px) {
+            .advantages-list li {
+                padding: 8px 0;
+                font-size: 1rem;
+            }
+        }
+
+        .advantages-list li:before {
+            content: "✓";
+            position: absolute;
+            left: 0;
+            color: #4CAF50;
+            font-weight: bold;
+        }
+
+        .advantages-list li strong {
+            color: var(--text-primary);
+        }
+
+        .received-files {
+            margin-top: 30px;
+        }
+
+        .file-item {
+            background: #f5f5f5;
+            padding: 15px;
+            border-radius: 8px;
+            margin: 10px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .file-info {
+            flex: 1;
+        }
+
+        .file-name {
+            font-weight: bold;
+            color: #333;
+        }
+
+        .file-size {
+            color: #666;
+            font-size: 14px;
+        }
+    </style>
+    <!-- Load WebRTC script with defer to ensure it loads before inline scripts run -->
+    <script src="/static/js/webrtc-transfer.js" defer></script>
+</head>
+<body>
+    <!-- Back to Dashboard Button -->
+    <div class="webrtc-container">
+        <a href="/dashboard" class="back-btn">
+            <svg width="20" height="20" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"></path>
+            </svg>
+            Back to Dashboard
+        </a>
+    </div>
+    
+    <!-- Immediate peer ID generation -->
+    <script>
+        // Generate peer ID immediately before anything else
+        window.PEER_ID = 'peer_' + Math.random().toString(36).substr(2, 9);
+        console.log('IMMEDIATE: Peer ID generated:', window.PEER_ID);
+        
+        // Try to update displays as soon as elements exist
+        function tryUpdatePeerIds() {
+            const senderEl = document.getElementById('sender-peer-id');
+            const receiverEl = document.getElementById('receiver-peer-id');
+            
+            if (senderEl && receiverEl) {
+                console.log('IMMEDIATE: Updating peer ID displays');
+                senderEl.textContent = window.PEER_ID;
+                receiverEl.textContent = window.PEER_ID;
+                const debugEl = document.getElementById('debug-peer-id');
+                if (debugEl) debugEl.textContent = window.PEER_ID;
+                return true;
+            }
+            return false;
+        }
+        
+        // Try immediately
+        if (!tryUpdatePeerIds()) {
+            // If elements don't exist yet, try again in 10ms
+            setTimeout(tryUpdatePeerIds, 10);
+            // And again in 50ms
+            setTimeout(tryUpdatePeerIds, 50);
+            // And again in 100ms
+            setTimeout(tryUpdatePeerIds, 100);
+        }
+    </script>
+    
+    <div class="webrtc-container">
+        <h1 style="text-align: center; color: #4CAF50;">🚀 WebRTC P2P File Transfer</h1>
+        <p style="text-align: center; color: #666; margin-bottom: 30px;">
+            Direct browser-to-browser transfer • No server bandwidth • 10x faster
+        </p>
+
+        <!-- Mode Selector -->
+        <div class="mode-selector">
+            <button class="mode-btn active" onclick="switchMode('sender')">
+                📤 Send Files
+            </button>
+            <button class="mode-btn" onclick="switchMode('receiver')">
+                📥 Receive Files
+            </button>
+        </div>
+
+        <!-- Sender Section -->
+        <div id="sender-section" class="transfer-section active">
+            <h2>📤 Send Files via WebRTC</h2>
+            
+            <div class="peer-id-display">
+                <div class="info-label">Your Peer ID (Share this with receiver)</div>
+                <div class="peer-id-code" id="sender-peer-id">Generating...</div>
+                <button class="btn-primary" onclick="copyPeerId('sender')">📋 Copy Peer ID</button>
+            </div>
+
+            <div class="input-group">
+                <label>Receiver's Peer ID</label>
+                <input type="text" id="receiver-peer-id-input" placeholder="Enter receiver's peer ID" />
+            </div>
+
+            <div class="connection-status status-disconnected" id="sender-status">
+                ⚫ Not Connected
+            </div>
+
+            <button class="btn-primary" onclick="connectToPeer()" id="connect-btn">
+                🔗 Connect to Receiver
+            </button>
+
+            <div class="file-drop-zone" id="file-drop-zone" onclick="document.getElementById('file-input').click()">
+                <h3>📁 Drop files here or click to select</h3>
+                <p>Supports any file type • Unlimited size</p>
+                <input type="file" id="file-input" multiple style="display: none;" onchange="handleFileSelect(event)">
+            </div>
+
+            <div class="progress-container" id="sender-progress">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="sender-progress-fill">0%</div>
+                </div>
+                <div class="transfer-info">
+                    <div class="info-card">
+                        <div class="info-label">File Name</div>
+                        <div class="info-value" id="sender-filename">-</div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-label">File Size</div>
+                        <div class="info-value" id="sender-filesize">-</div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-label">Transfer Speed</div>
+                        <div class="info-value" id="sender-speed">-</div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-label">Time Remaining</div>
+                        <div class="info-value" id="sender-time">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="advantages-list">
+                <h3>✨ WebRTC Advantages</h3>
+                <ul>
+                    <li><strong>Direct Transfer:</strong> Files go directly from sender to receiver</li>
+                    <li><strong>Zero Server Bandwidth:</strong> Server only handles signaling, not file data</li>
+                    <li><strong>10x Faster:</strong> No server bottleneck, uses full network speed</li>
+                    <li><strong>Unlimited Size:</strong> No file size limits</li>
+                    <li><strong>Secure:</strong> End-to-end encrypted connection</li>
+                    <li><strong>Real-Time:</strong> Instant transfer start, no upload/download wait</li>
+                </ul>
+            </div>
+        </div>
+
+        <!-- Receiver Section -->
+        <div id="receiver-section" class="transfer-section">
+            <h2>📥 Receive Files via WebRTC</h2>
+            
+            <div class="peer-id-display">
+                <div class="info-label">Your Peer ID (Share this with sender)</div>
+                <div class="peer-id-code" id="receiver-peer-id">Generating...</div>
+                <button class="btn-primary" onclick="copyPeerId('receiver')">📋 Copy Peer ID</button>
+            </div>
+
+            <div class="input-group">
+                <label>Sender's Peer ID (Optional - for accepting connection)</label>
+                <input type="text" id="sender-peer-id-input" placeholder="Enter sender's peer ID if you want to initiate connection" />
+                <button class="btn-primary" onclick="acceptConnection()" style="margin-top: 10px;">🔗 Accept Connection</button>
+            </div>
+
+            <div class="connection-status status-disconnected" id="receiver-status">
+                ⚫ Waiting for connection...
+            </div>
+
+            <div class="progress-container" id="receiver-progress">
+                <div class="progress-bar">
+                    <div class="progress-fill" id="receiver-progress-fill">0%</div>
+                </div>
+                <div class="transfer-info">
+                    <div class="info-card">
+                        <div class="info-label">File Name</div>
+                        <div class="info-value" id="receiver-filename">-</div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-label">File Size</div>
+                        <div class="info-value" id="receiver-filesize">-</div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-label">Transfer Speed</div>
+                        <div class="info-value" id="receiver-speed">-</div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-label">Time Remaining</div>
+                        <div class="info-value" id="receiver-time">-</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="received-files" id="received-files">
+                <h3>📦 Received Files</h3>
+                <div id="received-files-list"></div>
+            </div>
+
+            <div class="advantages-list">
+                <h3>🎯 When to Use WebRTC</h3>
+                <ul>
+                    <li><strong>Large Files:</strong> Transfer 10GB+ files without server limits</li>
+                    <li><strong>LAN Transfer:</strong> Super fast transfers on same network</li>
+                    <li><strong>Real-Time Sharing:</strong> Instant file sharing during collaboration</li>
+                    <li><strong>Bandwidth Saving:</strong> Save server bandwidth costs</li>
+                    <li><strong>Privacy:</strong> Files never touch the server</li>
+                </ul>
+            </div>
+
+            <!-- Debug Info -->
+            <div style="background: #f5f5f5; padding: 15px; border-radius: 8px; margin-top: 20px; font-size: 12px; color: #666;">
+                <strong>🔧 Debug Info:</strong><br>
+                Peer ID: <span id="debug-peer-id">Not generated</span><br>
+                WebRTC Status: <span id="debug-status">Initializing...</span><br>
+                <button class="btn-primary" onclick="testPeerIdGeneration()" style="margin-top: 10px; font-size: 12px; padding: 8px 16px;">
+                    🔄 Regenerate Peer ID
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let webrtcTransfer = null;
+        let myPeerId = window.PEER_ID || ('peer_' + Math.random().toString(36).substr(2, 9));
+        let currentMode = 'sender';
+        let startTime = null;
+
+        console.log('Main script: Using peer ID:', myPeerId);
+
+        // Initialize on page load
+        window.addEventListener('DOMContentLoaded', async () => {
+            console.log('DOM loaded, initializing WebRTC...');
+            // Update peer ID displays immediately
+            updatePeerIdDisplays();
+            
+            // Set a timeout to ensure peer ID is displayed even if init fails
+            setTimeout(() => {
+                if (document.getElementById('sender-peer-id').textContent === 'Generating...') {
+                    console.warn('Peer ID still showing "Generating...", forcing update');
+                    updatePeerIdDisplays();
+                }
+                if (document.getElementById('receiver-peer-id').textContent === 'Generating...') {
+                    console.warn('Receiver peer ID still showing "Generating...", forcing update');
+                    updatePeerIdDisplays();
+                }
+            }, 500);
+            
+            await initWebRTC();
+        });
+
+        // Also try to update immediately if DOM is already loaded
+        if (document.readyState === 'loading') {
+            // DOM not ready yet, wait for DOMContentLoaded
+        } else {
+            // DOM already loaded, update immediately
+            console.log('DOM already loaded, updating peer IDs now');
+            updatePeerIdDisplays();
+            
+            // Set a timeout to ensure peer ID is displayed
+            setTimeout(() => {
+                if (document.getElementById('sender-peer-id').textContent === 'Generating...') {
+                    console.warn('Peer ID still showing "Generating...", forcing update');
+                    updatePeerIdDisplays();
+                }
+                if (document.getElementById('receiver-peer-id').textContent === 'Generating...') {
+                    console.warn('Receiver peer ID still showing "Generating...", forcing update');
+                    updatePeerIdDisplays();
+                }
+            }, 500);
+            
+            initWebRTC();
+        }
+
+        function updatePeerIdDisplays() {
+            console.log('Updating peer ID displays with:', myPeerId);
+            const senderEl = document.getElementById('sender-peer-id');
+            const receiverEl = document.getElementById('receiver-peer-id');
+            const debugEl = document.getElementById('debug-peer-id');
+            
+            if (senderEl) {
+                senderEl.textContent = myPeerId;
+                console.log('Updated sender peer ID element');
+            } else {
+                console.warn('Sender peer ID element not found');
+            }
+            
+            if (receiverEl) {
+                receiverEl.textContent = myPeerId;
+                console.log('Updated receiver peer ID element');
+            } else {
+                console.warn('Receiver peer ID element not found');
+            }
+            
+            if (debugEl) {
+                debugEl.textContent = myPeerId;
+                console.log('Updated debug peer ID element');
+            }
+        }
+
+        async function initWebRTC() {
+            try {
+                console.log('initWebRTC called with peer ID:', myPeerId);
+                
+                // Peer ID already generated, just update displays again to be sure
+                updatePeerIdDisplays();
+                
+                const debugStatus = document.getElementById('debug-status');
+                if (debugStatus) debugStatus.textContent = 'Initializing...';
+
+                // Check if WebRTCFileTransfer class is available
+                if (typeof WebRTCFileTransfer === 'undefined') {
+                    console.error('WebRTCFileTransfer class not loaded yet, retrying...');
+                    // Retry after a short delay
+                    setTimeout(initWebRTC, 100);
+                    return;
+                }
+
+                // Initialize WebRTC transfer (using our external script logic)
+                webrtcTransfer = new WebRTCFileTransfer('/api/advanced/webrtc', myPeerId);
+                await webrtcTransfer.init();
+
+                console.log('WebRTC initialized successfully');
+
+                // Setup receiver mode by default
+                setupReceiver();
+                
+                if (debugStatus) debugStatus.textContent = 'Ready for connections';
+            } catch (error) {
+                console.error('WebRTC initialization failed:', error);
+                const debugStatus = document.getElementById('debug-status');
+                if (debugStatus) debugStatus.textContent = 'Error: ' + error.message;
+                
+                // Make sure peer ID is still displayed even on error
+                updatePeerIdDisplays();
+                
+                // Show user-friendly error
+                alert('WebRTC initialization failed. You can still copy your Peer ID and try again.\n\nError: ' + error.message);
+            }
+        }
+
+        function switchMode(mode) {
+            currentMode = mode;
+            
+            // Update buttons
+            document.querySelectorAll('.mode-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            event.target.classList.add('active');
+
+            // Update sections
+            document.querySelectorAll('.transfer-section').forEach(section => {
+                section.classList.remove('active');
+            });
+            document.getElementById(mode + '-section').classList.add('active');
+
+            // Setup mode
+            if (mode === 'receiver') {
+                setupReceiver();
+            }
+        }
+
+        async function setupReceiver() {
+            if (!webrtcTransfer) return;
+
+            webrtcTransfer.onFileReceived = (file) => {
+                console.log('File received:', file.name);
+                
+                // Add to received files list
+                const filesList = document.getElementById('received-files-list');
+                const fileItem = document.createElement('div');
+                fileItem.className = 'file-item';
+                fileItem.innerHTML = `
+                    <div class="file-info">
+                        <div class="file-name">📄 ${file.name}</div>
+                        <div class="file-size">${formatFileSize(file.size)}</div>
+                    </div>
+                    <button class="btn-primary" onclick="downloadFile('${file.name}')">
+                        💾 Download
+                    </button>
+                `;
+                filesList.appendChild(fileItem);
+
+                // Store file in memory
+                window.receivedFiles = window.receivedFiles || {};
+                window.receivedFiles[file.name] = file;
+
+                // Update status
+                updateStatus('receiver', 'connected', '✅ File received successfully!');
+                
+                // Hide progress
+                document.getElementById('receiver-progress').style.display = 'none';
+            };
+
+            webrtcTransfer.onProgress = (progress) => {
+                updateProgress('receiver', progress);
+            };
+        }
+
+        async function connectToPeer() {
+            const receiverPeerId = document.getElementById('receiver-peer-id-input').value.trim();
+            
+            if (!receiverPeerId) {
+                alert('Please enter receiver\'s peer ID');
+                return;
+            }
+
+            if (!webrtcTransfer) {
+                alert('WebRTC not initialized');
+                return;
+            }
+
+            try {
+                updateStatus('sender', 'connecting', '🔄 Connecting to receiver...');
+                
+                await webrtcTransfer.createOffer(receiverPeerId);
+                
+                updateStatus('sender', 'connected', '✅ Connected! Ready to send files');
+                
+                document.getElementById('connect-btn').disabled = true;
+                document.getElementById('connect-btn').textContent = '✅ Connected';
+            } catch (error) {
+                console.error('Connection failed:', error);
+                updateStatus('sender', 'disconnected', '❌ Connection failed: ' + error.message);
+            }
+        }
+
+        function handleFileSelect(event) {
+            const files = event.target.files;
+            if (files.length === 0) return;
+
+            // Send first file (can be extended for multiple files)
+            sendFile(files[0]);
+        }
+
+        async function sendFile(file) {
+            if (!webrtcTransfer || !webrtcTransfer.dataChannel || 
+                webrtcTransfer.dataChannel.readyState !== 'open') {
+                alert('Not connected to receiver. Please connect first.');
+                return;
+            }
+
+            try {
+                startTime = Date.now();
+                
+                // Show progress
+                document.getElementById('sender-progress').style.display = 'block';
+                document.getElementById('sender-filename').textContent = file.name;
+                document.getElementById('sender-filesize').textContent = formatFileSize(file.size);
+
+                // Setup progress callback
+                webrtcTransfer.onProgress = (progress) => {
+                    updateProgress('sender', progress);
+                };
+
+                // Send file
+                await webrtcTransfer.sendFile(file);
+
+                updateStatus('sender', 'connected', '✅ File sent successfully!');
+            } catch (error) {
+                console.error('File send failed:', error);
+                updateStatus('sender', 'disconnected', '❌ Transfer failed: ' + error.message);
+            }
+        }
+
+        function updateProgress(mode, progress) {
+            const progressFill = document.getElementById(mode + '-progress-fill');
+            const speedEl = document.getElementById(mode + '-speed');
+            const timeEl = document.getElementById(mode + '-time');
+
+            progressFill.style.width = progress.percent + '%';
+            progressFill.textContent = progress.percent + '%';
+
+            if (startTime) {
+                const elapsed = (Date.now() - startTime) / 1000; // seconds
+                const speed = progress.loaded / elapsed; // bytes per second
+                const remaining = (progress.total - progress.loaded) / speed; // seconds
+
+                speedEl.textContent = formatSpeed(speed);
+                timeEl.textContent = formatTime(remaining);
+            }
+        }
+
+        function updateStatus(mode, status, message) {
+            const statusEl = document.getElementById(mode + '-status');
+            statusEl.className = 'connection-status status-' + status;
+            statusEl.textContent = message;
+        }
+
+        function copyPeerId(mode) {
+            const peerId = mode === 'sender' ? 
+                document.getElementById('sender-peer-id').textContent :
+                document.getElementById('receiver-peer-id').textContent;
+            
+            if (peerId === 'Generating...' || peerId === 'Error') {
+                alert('Peer ID not ready yet. Please wait...');
+                return;
+            }
+            
+            navigator.clipboard.writeText(peerId).then(() => {
+                alert('✅ Peer ID copied to clipboard!\n\n' + peerId);
+            }).catch(() => {
+                // Fallback for older browsers
+                prompt('Copy this Peer ID:', peerId);
+            });
+        }
+
+        async function acceptConnection() {
+            const senderPeerId = document.getElementById('sender-peer-id-input').value.trim();
+            
+            if (!senderPeerId) {
+                alert('Please enter sender\'s peer ID');
+                return;
+            }
+
+            if (!webrtcTransfer) {
+                alert('WebRTC not initialized');
+                return;
+            }
+
+            try {
+                updateStatus('receiver', 'connecting', '🔄 Accepting connection from sender...');
+                
+                // In a real implementation, this would accept the offer
+                await webrtcTransfer.acceptOffer(senderPeerId);
+                
+                updateStatus('receiver', 'connected', '✅ Connected! Waiting for files...');
+            } catch (error) {
+                console.error('Connection failed:', error);
+                updateStatus('receiver', 'disconnected', '❌ Connection failed: ' + error.message);
+            }
+        }
+
+        function downloadFile(filename) {
+            const file = window.receivedFiles[filename];
+            if (!file) return;
+
+            const url = URL.createObjectURL(file);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
+
+        function testPeerIdGeneration() {
+            // Force regenerate peer ID
+            myPeerId = 'peer_' + Math.random().toString(36).substr(2, 9);
+            
+            console.log('New Peer ID generated:', myPeerId);
+            
+            // Update all displays
+            updatePeerIdDisplays();
+            
+            const debugStatus = document.getElementById('debug-status');
+            if (debugStatus) debugStatus.textContent = 'Peer ID regenerated successfully!';
+            
+            alert('✅ New Peer ID generated!\n\n' + myPeerId);
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes === 0) return '0 Bytes';
+            const k = 1024;
+            const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+            const i = Math.floor(Math.log(bytes) / Math.log(k));
+            return Math.round(bytes / Math.pow(k, i) * 100) / 100 + ' ' + sizes[i];
+        }
+
+        function formatSpeed(bytesPerSecond) {
+            return formatFileSize(bytesPerSecond) + '/s';
+        }
+
+        function formatTime(seconds) {
+            if (seconds < 60) return Math.round(seconds) + 's';
+            if (seconds < 3600) return Math.round(seconds / 60) + 'm';
+            return Math.round(seconds / 3600) + 'h';
+        }
+
+        // Drag and drop
+        const dropZone = document.getElementById('file-drop-zone');
+        
+        dropZone.addEventListener('dragover', (e) => {
+            e.preventDefault();
+            dropZone.classList.add('drag-over');
+        });
+
+        dropZone.addEventListener('dragleave', () => {
+            dropZone.classList.remove('drag-over');
+        });
+
+        dropZone.addEventListener('drop', (e) => {
+            e.preventDefault();
+            dropZone.classList.remove('drag-over');
+            
+            const files = e.dataTransfer.files;
+            if (files.length > 0) {
+                sendFile(files[0]);
+            }
+        });
+    </script>
+</body>
+</html>

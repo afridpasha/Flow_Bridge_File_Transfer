@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowBridge — Verify & Download</title>
+    <meta name="description" content="Enter OTP to download your shared file from FlowBridge.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <div class="auth-container">
+        <div class="auth-box animate-fade-up" style="max-width:480px;">
+            <div class="auth-logo">🔐</div>
+            <h1 class="auth-title">Verify & Download</h1>
+            <p class="auth-subtitle">Enter the OTP shared by the sender</p>
+
+            <!-- File Info -->
+            <div class="card" style="background:var(--bg-input);margin-bottom:1.5rem;">
+                <div style="display:flex;align-items:center;gap:0.75rem;">
+                    <span style="font-size:2rem;">📄</span>
+                    <div>
+                        <div style="font-weight:600;" id="fileName">{{ filename }}</div>
+                        <div style="color:var(--text-muted);font-size:0.85rem;">
+                            {{ file_size }} • From: {{ sender }}
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- OTP Input -->
+            <div class="form-group">
+                <label class="form-label">Enter 6-digit OTP</label>
+                <input class="form-input" type="text" id="otpInput"
+                       placeholder="000000" maxlength="6"
+                       pattern="[0-9]*" inputmode="numeric"
+                       style="text-align:center;font-size:1.8rem;letter-spacing:0.5rem;font-family:'JetBrains Mono',monospace;font-weight:700;">
+            </div>
+
+            <!-- Password (if required) -->
+            {% if has_password %}
+            <div class="form-group">
+                <label class="form-label">Password</label>
+                <input class="form-input" type="password" id="passwordInput" placeholder="Enter password">
+            </div>
+            {% endif %}
+
+            <div id="errorMsg" class="alert alert-error" style="display:none;"></div>
+            <div id="successMsg" class="alert alert-success" style="display:none;"></div>
+
+            <button class="btn btn-primary btn-lg" id="verifyBtn" onclick="verifyOTP()" style="width:100%;margin-top:1rem;">
+                🚀 Verify & Download
+            </button>
+
+            <p style="text-align:center;margin-top:1rem;color:var(--text-muted);font-size:0.85rem;">
+                💡 The sender should have shared the OTP with you
+            </p>
+        </div>
+    </div>
+
+    <!-- Theme from preference -->
+    <script>
+        if (localStorage.getItem('theme') === 'light') {
+            document.documentElement.setAttribute('data-theme', 'light');
+        }
+    </script>
+
+    <script>
+        const shareToken = "{{ share_token }}";
+
+        // Auto-focus OTP input
+        document.getElementById('otpInput').focus();
+
+        // Only allow numbers
+        document.getElementById('otpInput').addEventListener('input', function(e) {
+            this.value = this.value.replace(/[^0-9]/g, '');
+        });
+
+        // Submit on Enter
+        document.getElementById('otpInput').addEventListener('keypress', function(e) {
+            if (e.key === 'Enter') verifyOTP();
+        });
+
+        async function verifyOTP() {
+            const otp = document.getElementById('otpInput').value;
+            const errorMsg = document.getElementById('errorMsg');
+            const successMsg = document.getElementById('successMsg');
+            const verifyBtn = document.getElementById('verifyBtn');
+
+            errorMsg.style.display = 'none';
+            successMsg.style.display = 'none';
+
+            if (otp.length !== 6) {
+                errorMsg.textContent = 'Please enter a 6-digit OTP';
+                errorMsg.style.display = 'flex';
+                return;
+            }
+
+            verifyBtn.disabled = true;
+            verifyBtn.innerHTML = '<span class="spinner">⟳</span> Verifying...';
+
+            const body = { share_token: shareToken, otp: otp };
+
+            // Add password if field exists
+            const pwInput = document.getElementById('passwordInput');
+            if (pwInput) body.password = pwInput.value;
+
+            try {
+                const response = await fetch('/api/share/verify-otp', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(body)
+                });
+
+                const data = await response.json();
+
+                if (data.success) {
+                    successMsg.textContent = '✓ ' + data.message;
+                    successMsg.style.display = 'flex';
+                    verifyBtn.innerHTML = '⬇️ Downloading...';
+
+                    setTimeout(() => {
+                        window.location.href = data.download_url;
+                    }, 1000);
+                } else {
+                    errorMsg.textContent = data.error;
+                    errorMsg.style.display = 'flex';
+                    document.getElementById('otpInput').value = '';
+                    document.getElementById('otpInput').focus();
+                    verifyBtn.disabled = false;
+                    verifyBtn.innerHTML = '🚀 Verify & Download';
+                }
+            } catch (error) {
+                errorMsg.textContent = 'Connection error. Please try again.';
+                errorMsg.style.display = 'flex';
+                verifyBtn.disabled = false;
+                verifyBtn.innerHTML = '🚀 Verify & Download';
+            }
+        }
+    </script>
+</body>
+</html>

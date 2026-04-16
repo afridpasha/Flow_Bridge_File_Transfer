@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CodeShare - FlowBridge</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+    <style>
+        body { margin: 0; overflow: hidden; font-family: 'Inter', sans-serif; }
+        .editor-container { display: flex; flex-direction: column; height: 100vh; }
+        .editor-header { 
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white; padding: 0.75rem 1.5rem; display: flex; 
+            justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+        .editor-title { font-size: 1.1rem; font-weight: 600; display: flex; align-items: center; gap: 0.5rem; }
+        .editor-actions { display: flex; gap: 0.5rem; align-items: center; }
+        .btn-editor { 
+            padding: 0.4rem 0.8rem; border-radius: 6px; border: 1px solid rgba(255,255,255,0.3);
+            background: rgba(255,255,255,0.1); color: white; cursor: pointer; font-size: 0.85rem;
+            transition: all 0.2s; font-weight: 500;
+        }
+        .btn-editor:hover { background: rgba(255,255,255,0.2); }
+        .editor-info { display: flex; gap: 1rem; font-size: 0.85rem; align-items: center; }
+        .active-users { display: flex; gap: 0.3rem; align-items: center; }
+        .user-badge { 
+            background: rgba(255,255,255,0.2); padding: 0.2rem 0.6rem; 
+            border-radius: 12px; font-size: 0.75rem;
+        }
+        #editor { flex: 1; }
+        .status-bar {
+            background: var(--bg-secondary, #1e1e1e); color: var(--text-muted, #888);
+            padding: 0.4rem 1rem; display: flex; justify-content: space-between;
+            font-size: 0.8rem; border-top: 1px solid var(--border-color, #333);
+        }
+        .loading { 
+            display: flex; align-items: center; justify-content: center; 
+            height: 100vh; font-size: 1.2rem; color: #667eea;
+        }
+    </style>
+</head>
+<body>
+    <div id="loading" class="loading">
+        <div>💻 Loading CodeShare...</div>
+    </div>
+
+    <div id="editorContainer" class="editor-container" style="display:none;">
+        <div class="editor-header">
+            <div class="editor-title">
+                <span>💻</span>
+                <span id="codeTitle">Untitled</span>
+            </div>
+            <div class="editor-info">
+                <div class="active-users">
+                    <span>👥</span>
+                    <span id="userCount">1</span>
+                </div>
+                <select id="languageSelect" class="btn-editor" style="padding:0.3rem 0.5rem;">
+                    <option value="python">Python</option>
+                    <option value="javascript">JavaScript</option>
+                    <option value="typescript">TypeScript</option>
+                    <option value="java">Java</option>
+                    <option value="cpp">C++</option>
+                    <option value="c">C</option>
+                    <option value="csharp">C#</option>
+                    <option value="go">Go</option>
+                    <option value="rust">Rust</option>
+                    <option value="php">PHP</option>
+                    <option value="ruby">Ruby</option>
+                    <option value="html">HTML</option>
+                    <option value="css">CSS</option>
+                    <option value="sql">SQL</option>
+                    <option value="json">JSON</option>
+                    <option value="markdown">Markdown</option>
+                </select>
+            </div>
+            <div class="editor-actions">
+                <button class="btn-editor" onclick="copyShareLink()">🔗 Copy Link</button>
+                <button class="btn-editor" onclick="downloadCode()">⬇️ Download</button>
+                <button class="btn-editor" onclick="saveCode()">💾 Save</button>
+                <button class="btn-editor" onclick="goHome()">🏠 Home</button>
+            </div>
+        </div>
+
+        <div id="editor"></div>
+
+        <div class="status-bar">
+            <div>
+                <span id="statusText">Ready</span>
+                <span style="margin-left:1rem;" id="editMode">Read-only</span>
+            </div>
+            <div>
+                <span id="lineCol">Ln 1, Col 1</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Socket.IO CDN with proper fallback -->
+    <script src="https://cdn.socket.io/4.5.4/socket.io.min.js" 
+            onerror="this.onerror=null; this.src='/socket.io/socket.io.js';"></script>
+    <script>
+        const slug = "{{ slug }}";
+        let editor, socket, codeData, isUpdating = false;
+        const SOCKET_URL = window.location.origin; // Use current domain
+
+        // Load immediately
+        window.addEventListener('DOMContentLoaded', () => {
+            // Wait a bit for Socket.IO to load
+            setTimeout(loadCodeShare, 500);
+        });
+
+        async function loadCodeShare() {
+            try {
+                const res = await fetch(`/api/codeshare/${slug}`);
+                const data = await res.json();
+
+                if (!data.success) {
+                    alert(data.error || 'Failed to load code share');
+                    window.location.href = '/codeshare';
+                    return;
+                }
+
+                codeData = data;
+                document.getElementById('codeTitle').textContent = data.title;
+                document.getElementById('languageSelect').value = data.language;
+                document.getElementById('editMode').textContent = data.allow_edit ? 'Editable' : 'Read-only';
+
+                // Create simple textarea editor
+                const editorDiv = document.getElementById('editor');
+                editorDiv.innerHTML = `<textarea id="codeEditor" style="
+                    width: 100%; height: 100%; resize: none; border: none;
+                    padding: 1rem; font-family: 'Courier New', monospace;
+                    font-size: 14px; background: #1e1e1e; color: #d4d4d4;
+                    outline: none; tab-size: 4;
+                "></textarea>`;
+                
+                editor = document.getElementById('codeEditor');
+                editor.value = data.code || '// Start coding...';
+                editor.readOnly = !data.allow_edit;
+
+                // Track cursor position
+                editor.addEventListener('keyup', updateCursorPosition);
+                editor.addEventListener('click', updateCursorPosition);
+
+                // Track content changes
+                editor.addEventListener('input', () => {
+                    if (!isUpdating && codeData.allow_edit) {
+                        emitCodeChange(editor.value);
+                    }
+                });
+
+                // Tab key support
+                editor.addEventListener('keydown', (e) => {
+                    if (e.key === 'Tab') {
+                        e.preventDefault();
+                        const start = editor.selectionStart;
+                        const end = editor.selectionEnd;
+                        editor.value = editor.value.substring(0, start) + '    ' + editor.value.substring(end);
+                        editor.selectionStart = editor.selectionEnd = start + 4;
+                    }
+                });
+
+                // Initialize WebSocket (optional)
+                try {
+                    if (typeof io !== 'undefined') {
+                        initWebSocket();
+                    } else {
+                        console.warn('Socket.IO not available - real-time sync disabled');
+                        document.getElementById('statusText').textContent = 'Offline mode';
+                    }
+                } catch (e) {
+                    console.warn('WebSocket init failed:', e);
+                    document.getElementById('statusText').textContent = 'Offline mode';
+                }
+
+                document.getElementById('loading').style.display = 'none';
+                document.getElementById('editorContainer').style.display = 'flex';
+
+            } catch (error) {
+                console.error('Load error:', error);
+                alert('Failed to load code share: ' + error.message);
+            }
+        }
+
+        function updateCursorPosition() {
+            const text = editor.value.substring(0, editor.selectionStart);
+            const lines = text.split('\n');
+            const line = lines.length;
+            const col = lines[lines.length - 1].length + 1;
+            document.getElementById('lineCol').textContent = `Ln ${line}, Col ${col}`;
+        }
+
+        function initWebSocket() {
+            try {
+                if (typeof io === 'undefined') {
+                    console.warn('Socket.IO not loaded');
+                    return;
+                }
+
+                // Connect to current domain with explicit configuration
+                socket = io(SOCKET_URL, {
+                    transports: ['websocket', 'polling'],
+                    reconnection: true,
+                    reconnectionDelay: 1000,
+                    reconnectionAttempts: 5,
+                    timeout: 20000
+                });
+
+                socket.on('connect', () => {
+                    console.log('WebSocket connected');
+                    socket.emit('codeshare_join', { 
+                        slug: slug, 
+                        user_id: socket.id,
+                        user_name: 'Anonymous' 
+                    });
+                    document.getElementById('statusText').textContent = 'Connected';
+                });
+
+                socket.on('disconnect', () => {
+                    document.getElementById('statusText').textContent = 'Disconnected';
+                });
+
+                socket.on('codeshare_code_update', (data) => {
+                    if (data.code !== editor.value) {
+                        isUpdating = true;
+                        const cursorPos = editor.selectionStart;
+                        editor.value = data.code;
+                        editor.selectionStart = editor.selectionEnd = Math.min(cursorPos, data.code.length);
+                        isUpdating = false;
+                        document.getElementById('statusText').textContent = `Updated by ${data.user_name}`;
+                        setTimeout(() => {
+                            document.getElementById('statusText').textContent = 'Connected';
+                        }, 2000);
+                    }
+                });
+
+                socket.on('codeshare_active_users', (data) => {
+                    if (data.active_users) {
+                        document.getElementById('userCount').textContent = data.active_users.length;
+                    }
+                });
+
+                socket.on('codeshare_user_joined', (data) => {
+                    console.log('User joined:', data.user_name);
+                    document.getElementById('statusText').textContent = `${data.user_name} joined`;
+                    setTimeout(() => {
+                        document.getElementById('statusText').textContent = 'Connected';
+                    }, 2000);
+                });
+
+                socket.on('codeshare_user_left', (data) => {
+                    console.log('User left:', data.user_name);
+                    document.getElementById('statusText').textContent = `${data.user_name} left`;
+                    setTimeout(() => {
+                        document.getElementById('statusText').textContent = 'Connected';
+                    }, 2000);
+                });
+            } catch (error) {
+                console.error('WebSocket initialization failed:', error);
+                document.getElementById('statusText').textContent = 'Offline mode';
+            }
+        }
+
+        let debounceTimer;
+        function emitCodeChange(code) {
+            clearTimeout(debounceTimer);
+            debounceTimer = setTimeout(() => {
+                if (socket && socket.connected) {
+                    socket.emit('codeshare_edit', {
+                        slug: slug,
+                        code: code,
+                        user_id: socket.id,
+                        user_name: 'Anonymous'
+                    });
+                }
+            }, 500);
+        }
+
+        async function saveCode() {
+            try {
+                const code = editor.value;
+                const res = await fetch(`/api/codeshare/${slug}/update`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ code: code, editor_name: 'Anonymous', save_version: true })
+                });
+                const data = await res.json();
+                if (data.success) {
+                    document.getElementById('statusText').textContent = 'Saved ✓';
+                    setTimeout(() => {
+                        document.getElementById('statusText').textContent = 'Ready';
+                    }, 2000);
+                } else {
+                    alert('Failed to save: ' + (data.error || 'Unknown error'));
+                }
+            } catch (error) {
+                console.error('Save error:', error);
+                alert('Failed to save: ' + error.message);
+            }
+        }
+
+        function copyShareLink() {
+            const url = window.location.href;
+            navigator.clipboard.writeText(url).then(() => {
+                document.getElementById('statusText').textContent = 'Link copied!';
+                setTimeout(() => {
+                    document.getElementById('statusText').textContent = 'Ready';
+                }, 2000);
+            });
+        }
+
+        async function downloadCode() {
+            window.location.href = `/api/codeshare/${slug}/download`;
+        }
+
+        function goHome() {
+            const token = localStorage.getItem('token');
+            window.location.href = token ? '/dashboard' : '/codeshare';
+        }
+
+        document.getElementById('languageSelect').addEventListener('change', (e) => {
+            // Language change - just for display, no syntax highlighting in simple mode
+            console.log('Language changed to:', e.target.value);
+        });
+
+        window.addEventListener('beforeunload', () => {
+            try {
+                if (socket && socket.connected) {
+                    socket.emit('codeshare_leave', { 
+                        slug: slug,
+                        user_id: socket.id,
+                        user_name: 'Anonymous'
+                    });
+                }
+            } catch (e) {
+                console.warn('Failed to emit leave event:', e);
+            }
+        });
+    </script>
+</body>
+</html>

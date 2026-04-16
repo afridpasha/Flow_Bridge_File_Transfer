@@ -1,0 +1,131 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FlowBridge — Activity</title>
+    <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+    <link rel="manifest" href="/static/manifest.json">
+    <meta name="theme-color" content="#6C63FF">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/css/style.css">
+</head>
+<body>
+    <nav class="navbar" role="navigation" aria-label="Main navigation">
+        <div class="nav-brand" style="cursor:pointer;" onclick="window.location.href='/dashboard'">🌉 FlowBridge</div>
+        <div class="nav-actions">
+            <span class="nav-user" id="navUser"></span>
+            <button class="theme-toggle" onclick="toggleTheme()" id="themeBtn" title="Toggle theme" aria-label="Toggle theme">🌙</button>
+            <a href="/dashboard" class="btn btn-ghost btn-sm">← Dashboard</a>
+        </div>
+    </nav>
+
+    <div style="max-width:700px;margin:2rem auto;padding:0 1rem;" role="main">
+        <h1 style="font-size:1.5rem;font-weight:700;margin-bottom:1.5rem;">📋 Activity Feed</h1>
+
+        <div id="activityList" class="animate-fade-up">
+            <div class="card" style="text-align:center;padding:2rem;">
+                <span class="spinner" style="font-size:1.5rem;">⟳</span>
+                <p style="color:var(--text-muted);margin-top:0.5rem;">Loading activity...</p>
+            </div>
+        </div>
+
+        <div id="loadMoreBox" style="text-align:center;margin:1.5rem 0;display:none;">
+            <button class="btn btn-ghost" onclick="loadMore()" id="loadMoreBtn">Load More</button>
+        </div>
+    </div>
+
+    <div class="toast-container" id="toastContainer"></div>
+
+    <script>
+    const token = localStorage.getItem('token');
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    if (!token) window.location.href = '/login';
+    document.getElementById('navUser').textContent = user.username || '';
+
+    // Theme
+    function toggleTheme() {
+        const c = document.documentElement.getAttribute('data-theme');
+        if (c === 'light') { document.documentElement.removeAttribute('data-theme'); localStorage.setItem('theme','dark'); document.getElementById('themeBtn').textContent='🌙'; }
+        else { document.documentElement.setAttribute('data-theme','light'); localStorage.setItem('theme','light'); document.getElementById('themeBtn').textContent='☀️'; }
+    }
+    if (localStorage.getItem('theme')==='light') { document.documentElement.setAttribute('data-theme','light'); document.getElementById('themeBtn').textContent='☀️'; }
+
+    let currentPage = 1;
+    let totalPages = 1;
+
+    function escapeHtml(s) {
+        const d = document.createElement('div'); d.textContent = s; return d.innerHTML;
+    }
+
+    async function loadActivity(page = 1) {
+        try {
+            const res = await fetch(`/api/user/activity?page=${page}&per_page=20`, {
+                headers: { 'Authorization': 'Bearer ' + token }
+            });
+            const data = await res.json();
+
+            if (!data.success) return;
+
+            totalPages = data.pages;
+            currentPage = page;
+
+            const list = document.getElementById('activityList');
+
+            if (page === 1) list.innerHTML = '';
+
+            if (data.activities.length === 0 && page === 1) {
+                list.innerHTML = `
+                    <div class="card" style="text-align:center;padding:3rem;">
+                        <div style="font-size:3rem;margin-bottom:1rem;">📭</div>
+                        <p style="color:var(--text-muted);">No activity yet. Upload a file to get started!</p>
+                    </div>`;
+                return;
+            }
+
+            for (const a of data.activities) {
+                const details = a.details || {};
+                let desc = a.action;
+                if (a.action === 'upload') desc = `Uploaded <strong>${escapeHtml(details.filename || '')}</strong>`;
+                else if (a.action === 'download') desc = `Downloaded <strong>${escapeHtml(details.filename || '')}</strong>`;
+                else if (a.action === 'delete') desc = `Deleted <strong>${escapeHtml(details.filename || '')}</strong>`;
+                else if (a.action === 'share') desc = `Shared <strong>${escapeHtml(details.filename || '')}</strong>${details.email ? ' via email to ' + escapeHtml(details.email) : ''}`;
+                else if (a.action === 'rename') desc = `Renamed to <strong>${escapeHtml(details.new_name || '')}</strong>`;
+                else if (a.action === 'move') desc = `Moved file to folder`;
+                else if (a.action === 'restore') desc = `Restored from trash`;
+                else if (a.action === 'login') desc = `Logged in`;
+                else if (a.action === '2fa_enable') desc = `Enabled 2FA`;
+                else if (a.action === 'comment') desc = `Added a comment`;
+
+                const card = document.createElement('div');
+                card.className = 'card';
+                card.style.cssText = 'margin-bottom:0.5rem;padding:0.75rem 1rem;display:flex;align-items:center;gap:0.75rem;';
+                card.innerHTML = `
+                    <div style="font-size:1.4rem;flex-shrink:0;">${a.icon}</div>
+                    <div style="flex:1;min-width:0;">
+                        <div style="font-size:0.9rem;">${desc}</div>
+                    </div>
+                    <div style="color:var(--text-muted);font-size:0.8rem;flex-shrink:0;white-space:nowrap;">${escapeHtml(a.time_ago)}</div>
+                `;
+                list.appendChild(card);
+            }
+
+            document.getElementById('loadMoreBox').style.display = currentPage < totalPages ? 'block' : 'none';
+
+        } catch (err) {
+            document.getElementById('activityList').innerHTML = `
+                <div class="card" style="text-align:center;padding:2rem;">
+                    <p style="color:var(--danger);">Failed to load activity</p>
+                </div>`;
+        }
+    }
+
+    function loadMore() {
+        loadActivity(currentPage + 1);
+    }
+
+    loadActivity(1);
+    </script>
+</body>
+</html>
