@@ -402,7 +402,7 @@ def start_server():
     print("=" * 60)
 
     try:
-        run_kwargs = dict(host=Config.HOST, port=port, debug=False, log_output=True)
+        run_kwargs = dict(host=Config.HOST, port=port, debug=False, log_output=False)
         if ASYNC_MODE == 'threading':
             run_kwargs['allow_unsafe_werkzeug'] = True
         socketio.run(app, **run_kwargs)
