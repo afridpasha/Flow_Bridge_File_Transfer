@@ -126,13 +126,10 @@ def set_security_headers(response):
         pass
     # Security headers
     response.headers['X-Content-Type-Options'] = 'nosniff'
-    # Allow HuggingFace iframe embedding
-    if 'huggingface' not in request.host:
-        response.headers['X-Frame-Options'] = 'SAMEORIGIN'
     response.headers['X-XSS-Protection'] = '1; mode=block'
     response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
     response.headers['Permissions-Policy'] = 'camera=(), microphone=(), geolocation=()'
-    # CSP — allow inline scripts + CDN resources
+    # CSP — allow inline scripts + CDN resources + HuggingFace iframe embedding
     response.headers['Content-Security-Policy'] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' 'unsafe-eval' https://cdn.socket.io https://cdn.jsdelivr.net; "
@@ -140,7 +137,7 @@ def set_security_headers(response):
         "font-src 'self' https://fonts.gstatic.com; "
         "img-src 'self' data: blob: https:; "
         "connect-src 'self' ws: wss: https:; "
-        "frame-src 'self'"
+        "frame-ancestors *;"
     )
     return response
 
