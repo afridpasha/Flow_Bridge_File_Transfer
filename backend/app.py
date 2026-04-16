@@ -401,11 +401,19 @@ def start_server():
     print(f" Cache      : {redis_ok}")
     print(f" Async Mode : {ASYNC_MODE}")
     print("=" * 60)
+    print(f" Starting server on {Config.HOST}:{port}...")
+    print("=" * 60)
 
-    run_kwargs = dict(host=Config.HOST, port=port, debug=False)
-    if ASYNC_MODE == 'threading':
-        run_kwargs['allow_unsafe_werkzeug'] = True
-    socketio.run(app, **run_kwargs)
+    try:
+        run_kwargs = dict(host=Config.HOST, port=port, debug=False, log_output=True)
+        if ASYNC_MODE == 'threading':
+            run_kwargs['allow_unsafe_werkzeug'] = True
+        socketio.run(app, **run_kwargs)
+    except Exception as e:
+        logger.error(f"Failed to start server: {e}")
+        import traceback
+        traceback.print_exc()
+        raise
 
 
 if __name__ == '__main__':
