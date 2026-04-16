@@ -3,6 +3,21 @@ FlowBridge v3.0 — Hybrid File Transfer System
 Main application entry point with all security middleware.
 """
 
+# ========== CRITICAL: Eventlet must be imported and patched FIRST ==========
+# This MUST happen before any other imports (Flask, requests, etc.)
+try:
+    import eventlet
+    eventlet.monkey_patch()
+    ASYNC_MODE = 'eventlet'
+except ImportError:
+    try:
+        from gevent import monkey
+        monkey.patch_all()
+        ASYNC_MODE = 'gevent'
+    except ImportError:
+        ASYNC_MODE = 'threading'
+
+# ========== Now safe to import everything else ==========
 import os
 import sys
 import logging
@@ -71,26 +86,17 @@ limiter = Limiter(
     storage_uri="memory://",
 )
 
-# SocketIO
-async_mode = 'threading'
-for mode in ['eventlet', 'gevent']:
-    try:
-        __import__(mode)
-        async_mode = mode
-        break
-    except ImportError:
-        pass
-
+# SocketIO - use the async_mode we detected at the top
 socketio = SocketIO(
     app,
     cors_allowed_origins="*",
-    async_mode=async_mode,
+    async_mode=ASYNC_MODE,
     max_http_buffer_size=10 * 1024 * 1024,
     ping_timeout=60,
     ping_interval=25,
     logger=True,
     engineio_logger=True,
-    **({"allow_unsafe_werkzeug": True} if async_mode == "threading" else {})
+    **({"allow_unsafe_werkzeug": True} if ASYNC_MODE == "threading" else {})
 )
 
 # ========== Request Latency Tracking (feeds CF Worker adaptive weights) ==========
@@ -391,11 +397,11 @@ def start_server():
     print(f" B2 Replica : {b2_ok}  (EU Central)")
     print(f" MinIO Local: {minio_ok} (localhost:9000)")
     print(f" Cache      : {redis_ok}")
-    print(f" Async Mode : {async_mode}")
+    print(f" Async Mode : {ASYNC_MODE}")
     print("=" * 60)
 
     run_kwargs = dict(host=Config.HOST, port=port, debug=False)
-    if async_mode == 'threading':
+    if ASYNC_MODE == 'threading':
         run_kwargs['allow_unsafe_werkzeug'] = True
     socketio.run(app, **run_kwargs)
 
