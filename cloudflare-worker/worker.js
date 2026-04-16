@@ -16,21 +16,21 @@
 const BACKENDS = [
   {
     id: "hf-replica-1",
-    url: "https://YOUR_HF_USERNAME-flowbridge-1.hf.space",
+    url: "https://afridpasha1983-flowbridgefiletransfer.hf.space",
     region: "us-east",
-    baseWeight: 3,       // HuggingFace gets 3x traffic
+    baseWeight: 3,
   },
   {
     id: "hf-replica-2",
-    url: "https://YOUR_HF_USERNAME-flowbridge-2.hf.space",
+    url: "https://mohammadafrid-flowbridgefiletransfer.hf.space",
     region: "eu-west",
-    baseWeight: 3,       // HuggingFace gets 3x traffic (same as hf-replica-1)
+    baseWeight: 3,
   },
   {
     id: "render-primary",
-    url: "https://flowbridge-api-primary.onrender.com",
+    url: "https://flow-bridge-file-transfer.onrender.com",
     region: "us-west",
-    baseWeight: 1,       // Render gets 1x traffic (least)
+    baseWeight: 1,
   },
 ];
 
@@ -62,6 +62,24 @@ export default {
     // 1. CORS preflight — handle at edge, never hits backend
     if (request.method === "OPTIONS") {
       return corsPreflightResponse();
+    }
+
+    // Status endpoint — shows live health of all backends
+    if (url.pathname === "/lb-status") {
+      const statuses = await Promise.all(BACKENDS.map(async b => {
+        const health = await env.FLOWBRIDGE_KV.get(KV_HEALTH_PREFIX + b.id);
+        const circuit = await env.FLOWBRIDGE_KV.get(KV_CIRCUIT_PREFIX + b.id);
+        const metrics = await env.FLOWBRIDGE_KV.get(KV_METRICS_PREFIX + b.id);
+        return {
+          id: b.id, url: b.url, region: b.region, baseWeight: b.baseWeight,
+          health: health ? JSON.parse(health) : { healthy: "unknown" },
+          circuit: circuit ? JSON.parse(circuit) : { state: "CLOSED" },
+          metrics: metrics ? JSON.parse(metrics) : {},
+        };
+      }));
+      return new Response(JSON.stringify({ backends: statuses, ts: Date.now() }, null, 2), {
+        headers: { ...jsonHeaders(), "Cache-Control": "no-store" },
+      });
     }
 
     // 2. Rate limiting — check CF KV token bucket

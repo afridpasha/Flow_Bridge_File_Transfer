@@ -21,6 +21,12 @@
         .refresh-btn { background: var(--primary); color: white; border: none; padding: 0.5rem 1.25rem; border-radius: 8px; cursor: pointer; font-size: 0.9rem; transition: var(--transition); }
         .refresh-btn:hover { opacity: 0.85; transform: translateY(-2px); }
         .log-box { background: var(--bg-input); border-radius: 8px; padding: 1rem; font-family: var(--font-mono); font-size: 0.8rem; max-height: 200px; overflow-y: auto; color: var(--text-secondary); border: 1px solid var(--border); }
+        .backend-item { display: flex; justify-content: space-between; align-items: center; padding: 0.75rem; background: var(--bg-input); border-radius: 8px; margin-bottom: 0.5rem; flex-wrap: wrap; gap: 0.5rem; }
+        .badge { display: inline-block; padding: 0.2rem 0.6rem; border-radius: 20px; font-size: 0.75rem; font-weight: 600; }
+        .badge-green { background: rgba(16,185,129,0.15); color: #10b981; }
+        .badge-red { background: rgba(239,68,68,0.15); color: #ef4444; }
+        .badge-yellow { background: rgba(245,158,11,0.15); color: #f59e0b; }
+        .badge-blue { background: rgba(99,102,241,0.15); color: #6366f1; }
         .container { max-width: 1200px; margin: 0 auto; padding: 2rem 1rem; }
         
         @media (max-width: 768px) {
@@ -73,6 +79,15 @@
         <div class="metric-card" style="margin-bottom:1.5rem;">
             <h3 style="margin-top:0;color:var(--text-primary);">🖥️ Running Instances</h3>
             <div class="instance-list" id="instanceList">Loading...</div>
+        </div>
+
+        <div class="metric-card" style="margin-bottom:1.5rem;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:1rem;">
+                <h3 style="margin:0;color:var(--text-primary);">🌍 Global Load Balancer (Cloudflare)</h3>
+                <span id="lbWorkerUrl" style="font-size:0.75rem;color:var(--text-muted);"></span>
+            </div>
+            <div id="lbBackendList">Loading...</div>
+            <div style="margin-top:0.75rem;font-size:0.8rem;color:var(--text-muted);" id="lbLastChecked"></div>
         </div>
 
         <div class="metric-card">
@@ -150,8 +165,54 @@
             } catch (e) { console.error(e); }
         }
 
+        // Worker URL — set once via the input below, saved to localStorage
+        const LB_WORKER_URL = localStorage.getItem('lbWorkerUrl') || '';
+
+        async function loadLBStatus() {
+            const listEl = document.getElementById('lbBackendList');
+            const urlEl  = document.getElementById('lbWorkerUrl');
+            if (!LB_WORKER_URL) {
+                listEl.innerHTML = `<div style="color:var(--text-muted);font-size:0.85rem;">Set Worker URL: <input id="lbUrlInput" placeholder="https://flowbridge-lb.xxx.workers.dev" style="background:var(--bg-input);border:1px solid var(--border);border-radius:6px;padding:0.3rem 0.6rem;color:var(--text-primary);width:300px;max-width:100%;"> <button onclick="saveLbUrl()" style="margin-left:0.5rem;background:var(--primary);color:white;border:none;border-radius:6px;padding:0.3rem 0.75rem;cursor:pointer;">Save</button></div>`;
+                return;
+            }
+            urlEl.textContent = LB_WORKER_URL;
+            try {
+                const res  = await fetch(LB_WORKER_URL + '/lb-status');
+                const data = await res.json();
+                listEl.innerHTML = data.backends.map(b => {
+                    const isUp = b.health.healthy === true || b.health.healthy === 'unknown';
+                    const cState = b.circuit.state || 'CLOSED';
+                    const circuitBadge = cState === 'CLOSED'
+                        ? '<span class="badge badge-green">CLOSED ✓</span>'
+                        : cState === 'OPEN'
+                        ? '<span class="badge badge-red">OPEN ✗</span>'
+                        : '<span class="badge badge-yellow">HALF-OPEN</span>';
+                    return '<div class="backend-item">'
+                        + '<span><span class="status-dot" style="background:' + (isUp ? '#10b981' : '#ef4444') + '"></span>'
+                        + '<strong>' + b.id + '</strong>'
+                        + '<span style="color:var(--text-muted);font-size:0.8rem;margin-left:0.5rem;">' + b.region + '</span></span>'
+                        + '<span style="display:flex;gap:0.5rem;align-items:center;flex-wrap:wrap;">'
+                        + circuitBadge
+                        + '<span class="badge badge-blue">w:' + b.baseWeight + '</span>'
+                        + (b.metrics.p95LatencyMs ? '<span class="badge" style="background:rgba(99,102,241,0.1);color:var(--text-secondary);">p95: ' + b.metrics.p95LatencyMs + 'ms</span>' : '')
+                        + (b.health.latencyMs ? '<span style="font-size:0.8rem;color:var(--text-muted);">last: ' + b.health.latencyMs + 'ms</span>' : '')
+                        + '</span></div>';
+                }).join('');
+                document.getElementById('lbLastChecked').textContent = 'Last checked: ' + new Date(data.ts).toLocaleTimeString();
+            } catch(e) {
+                listEl.innerHTML = '<span style="color:var(--danger);font-size:0.85rem;">Could not reach worker: ' + e.message + '</span>';
+            }
+        }
+
+        function saveLbUrl() {
+            const val = document.getElementById('lbUrlInput') && document.getElementById('lbUrlInput').value.trim();
+            if (val) { localStorage.setItem('lbWorkerUrl', val); location.reload(); }
+        }
+
         loadMetrics();
+        loadLBStatus();
         setInterval(loadMetrics, 10000);
+        setInterval(loadLBStatus, 30000);
     </script>
 </body>
 </html>
