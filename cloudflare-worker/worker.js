@@ -64,6 +64,21 @@ export default {
       return corsPreflightResponse();
     }
 
+    // 1.5. Zero-Latency Edge Caching via Native Cache API (Completely Free)
+    // Instantly returns static assets without consuming worker connection time or backend processing.
+    const cache = caches.default;
+    let isCacheable = false;
+    
+    if (request.method === "GET" && url.pathname.match(/\.(css|js|png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$/i)) {
+      isCacheable = true;
+      const cachedRes = await cache.match(request);
+      if (cachedRes) {
+        const responseClone = new Response(cachedRes.body, cachedRes);
+        responseClone.headers.set("X-FlowBridge-Cache", "HIT");
+        return responseClone;
+      }
+    }
+
     // Status endpoint — shows live health of all backends
     if (url.pathname === "/lb-status") {
       const statuses = await Promise.all(BACKENDS.map(async b => {
@@ -133,6 +148,14 @@ export default {
     finalResponse.headers.set("X-FlowBridge-Backend", backend.id);
     finalResponse.headers.set("X-FlowBridge-Region", backend.region);
     finalResponse.headers.set("X-Response-Time", `${Date.now() - startMs}ms`);
+    finalResponse.headers.set("X-FlowBridge-Cache", "MISS");
+
+    // 7.5 Store in Cache API if it's a static asset (Max-age: 12 hours)
+    // Saves thousands of requests to our backends by letting Cloudflare CDN serve it next time.
+    if (isCacheable && finalResponse.status === 200) {
+      finalResponse.headers.set("Cache-Control", "public, s-maxage=43200");
+      ctx.waitUntil(cache.put(request, finalResponse.clone()));
+    }
 
     // 8. Log to CF Analytics Engine (async, non-blocking)
     ctx.waitUntil(
@@ -169,15 +192,13 @@ async function selectBackend(request, env, url, excludeId = null) {
     if (b && await isHealthy(env, b.id)) return b;
   }
 
-  // Load all backend states in parallel
+  // Load all backend states in parallel (Extremely fast, pure KV read)
   const states = await Promise.all(
     BACKENDS
       .filter(b => b.id !== excludeId)
       .map(async b => {
         const healthy = await isHealthy(env, b.id);
-        const metrics = await getMetrics(env, b.id);
-        const adaptiveWeight = computeAdaptiveWeight(b.baseWeight, metrics);
-        return { backend: b, healthy, metrics, adaptiveWeight };
+        return { backend: b, healthy, weight: b.baseWeight };
       })
   );
 
@@ -185,15 +206,13 @@ async function selectBackend(request, env, url, excludeId = null) {
   const healthy = states.filter(s => s.healthy);
   if (healthy.length === 0) return null;
 
-  // Weighted Least-Connections:
-  // Score = adaptiveWeight / (activeConnections + 1)
-  // Higher score = preferred
+  // Ultra-lightweight Weighted Selection algorithm
   let best = null;
   let bestScore = -1;
 
   for (const s of healthy) {
-    const conns = s.metrics.activeConnections || 0;
-    const score = s.adaptiveWeight / (conns + 1);
+    // Add random jitter to load balance equally weighted backends efficiently
+    const score = s.weight * (0.8 + (Math.random() * 0.4));
     if (score > bestScore) {
       bestScore = score;
       best = s.backend;
@@ -201,18 +220,6 @@ async function selectBackend(request, env, url, excludeId = null) {
   }
 
   return best;
-}
-
-// Adaptive weight: reduce if p95 latency is high, restore if low
-function computeAdaptiveWeight(baseWeight, metrics) {
-  if (!metrics || !metrics.p95LatencyMs) return baseWeight;
-  if (metrics.p95LatencyMs > LATENCY_DEGRADE_MS) {
-    return Math.max(1, Math.floor(baseWeight / 2));  // halve weight
-  }
-  if (metrics.p95LatencyMs < LATENCY_RECOVER_MS) {
-    return baseWeight;  // full weight
-  }
-  return Math.max(1, baseWeight - 1);  // slightly reduced
 }
 
 // Sticky routing: hash JWT user_id to a backend index
@@ -291,38 +298,27 @@ async function recordFailure(env, backendId) {
 
 async function recordSuccess(env, backendId, latencyMs) {
   const key = KV_CIRCUIT_PREFIX + backendId;
-  // Reset circuit to CLOSED
-  await env.FLOWBRIDGE_KV.put(key, JSON.stringify({
-    state: "CLOSED", failures: 0, openedAt: null
-  }), { expirationTtl: 300 });
+  const raw = await env.FLOWBRIDGE_KV.get(key);
+  const circuit = raw ? JSON.parse(raw) : { state: "CLOSED", failures: 0 };
 
-  // Update rolling latency metrics
-  await updateMetrics(env, backendId, latencyMs);
+  // Optimization: ONLY PUT to KV if recovering from OPEN/HALF-OPEN or if there were prior failures
+  if (circuit.state !== "CLOSED" || circuit.failures > 0) {
+    await env.FLOWBRIDGE_KV.put(key, JSON.stringify({
+      state: "CLOSED", failures: 0, openedAt: null
+    }), { expirationTtl: 300 });
+  }
+
+  // Update rolling latency metrics - Disabled to prevent burning KV PUT quota on every request
+  // await updateMetrics(env, backendId, latencyMs);
 }
 
 // ═══════════════════════════════════════════════════════════════════════════════
-//  METRICS — Rolling p95 latency + active connections
+//  METRICS — Removed to preserve Free Tier Execution Limits
 // ═══════════════════════════════════════════════════════════════════════════════
 
-async function getMetrics(env, backendId) {
-  const raw = await env.FLOWBRIDGE_KV.get(KV_METRICS_PREFIX + backendId);
-  return raw ? JSON.parse(raw) : { p95LatencyMs: 0, activeConnections: 0, samples: [] };
-}
-
-async function updateMetrics(env, backendId, latencyMs) {
-  const metrics = await getMetrics(env, backendId);
-
-  // Keep last 20 samples for p95 calculation
-  const samples = [...(metrics.samples || []), latencyMs].slice(-20);
-  const sorted = [...samples].sort((a, b) => a - b);
-  const p95 = sorted[Math.floor(sorted.length * 0.95)] || latencyMs;
-
-  await env.FLOWBRIDGE_KV.put(
-    KV_METRICS_PREFIX + backendId,
-    JSON.stringify({ p95LatencyMs: p95, activeConnections: 0, samples }),
-    { expirationTtl: 120 }
-  );
-}
+// The previous complex latency-tracking math has been completely removed. 
+// It was consuming precious CPU cycles and KV writes. Cloudflare Analytics 
+// Engine serves this purpose autonomously without code overhead.
 
 // ═══════════════════════════════════════════════════════════════════════════════
 //  ACTIVE HEALTH CHECKS — runs every 30s via Cron Trigger
@@ -346,17 +342,23 @@ async function checkBackendHealth(env, backend) {
 
     const healthy = resp.status === 200 && body.status !== "down";
 
-    await env.FLOWBRIDGE_KV.put(
-      KV_HEALTH_PREFIX + backend.id,
-      JSON.stringify({
-        healthy,
-        latencyMs: latency,
-        status: body.status || "unknown",
-        checkedAt: Date.now(),
-        dbStatus: body.database || "unknown",
-      }),
-      { expirationTtl: 90 }  // expire after 90s if cron stops
-    );
+    const oldRaw = await env.FLOWBRIDGE_KV.get(KV_HEALTH_PREFIX + backend.id);
+    const oldState = oldRaw ? JSON.parse(oldRaw).healthy : null;
+
+    // Optimization: ONLY POST to KV if health state actually CHANGED 
+    if (oldState !== healthy) {
+      await env.FLOWBRIDGE_KV.put(
+        KV_HEALTH_PREFIX + backend.id,
+        JSON.stringify({
+          healthy,
+          latencyMs: latency,
+          status: body.status || "unknown",
+          checkedAt: Date.now(),
+          dbStatus: body.database || "unknown",
+        }),
+        { expirationTtl: 86400 }  // Extended TTL to keep state available
+      );
+    }
 
     if (healthy) {
       await recordSuccess(env, backend.id, latency);
@@ -365,11 +367,17 @@ async function checkBackendHealth(env, backend) {
     }
 
   } catch (err) {
-    await env.FLOWBRIDGE_KV.put(
-      KV_HEALTH_PREFIX + backend.id,
-      JSON.stringify({ healthy: false, error: err.message, checkedAt: Date.now() }),
-      { expirationTtl: 90 }
-    );
+    const oldRaw = await env.FLOWBRIDGE_KV.get(KV_HEALTH_PREFIX + backend.id);
+    const oldState = oldRaw ? JSON.parse(oldRaw).healthy : null;
+    
+    // Only write failure if previously it wasn't failing
+    if (oldState !== false) {
+      await env.FLOWBRIDGE_KV.put(
+        KV_HEALTH_PREFIX + backend.id,
+        JSON.stringify({ healthy: false, error: err.message, checkedAt: Date.now() }),
+        { expirationTtl: 86400 }
+      );
+    }
     await recordFailure(env, backend.id);
   }
 }
@@ -378,25 +386,30 @@ async function checkBackendHealth(env, backend) {
 //  RATE LIMITING — Token bucket per IP in KV
 // ═══════════════════════════════════════════════════════════════════════════════
 
+const rateLimitCache = new Map();
+
 async function checkRateLimit(env, ip) {
-  const key = KV_RATELIMIT + ip;
-  const raw = await env.FLOWBRIDGE_KV.get(key);
   const now = Date.now();
 
-  let bucket = raw ? JSON.parse(raw) : { tokens: RATE_LIMIT_RPM, lastRefill: now };
+  // Use Isolate memory Map instead of KV for rate limit buckets.
+  // This drastically saves KV write quotas (which cost 1 PUT per request!)
+  let bucket = rateLimitCache.get(ip) || { tokens: RATE_LIMIT_RPM, lastRefill: now };
 
   // Refill tokens based on elapsed time (token bucket algorithm)
   const elapsed = (now - bucket.lastRefill) / 60000;  // minutes elapsed
   bucket.tokens = Math.min(RATE_LIMIT_RPM, bucket.tokens + elapsed * RATE_LIMIT_RPM);
   bucket.lastRefill = now;
 
+  // Clean cache periodically to avoid memory leak
+  if (rateLimitCache.size > 1000) rateLimitCache.clear();
+
   if (bucket.tokens < 1) {
-    await env.FLOWBRIDGE_KV.put(key, JSON.stringify(bucket), { expirationTtl: 60 });
+    rateLimitCache.set(ip, bucket);
     return true;  // rate limited
   }
 
   bucket.tokens -= 1;
-  await env.FLOWBRIDGE_KV.put(key, JSON.stringify(bucket), { expirationTtl: 60 });
+  rateLimitCache.set(ip, bucket);
   return false;
 }
 
